@@ -1,0 +1,270 @@
+// Copyright (c) 2019, Sylabs Inc. All rights reserved.
+// Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+// This software is licensed under a 3-clause BSD license. Please consult the
+// LICENSE.md file distributed with the sources of this project regarding your
+// rights to use or distribute this software.
+
+/*
+ * builder is a package that provides a set of APIs to help configure, install and uninstall MPI
+ * on the host or in a container.
+ */
+package builder
+
+import (
+	"fmt"
+	"io/ioutil"
+	"log"
+	"os"
+	"path/filepath"
+
+	"github.com/gvallee/go_exec/pkg/advexec"
+	"github.com/gvallee/go_software_build/internal/pkg/autotools"
+	"github.com/gvallee/go_software_build/pkg/app"
+	"github.com/gvallee/go_software_build/pkg/buildenv"
+	"github.com/gvallee/go_util/pkg/util"
+)
+
+const (
+	DefaultUbuntuDistro = "ubuntu:disco"
+)
+
+// GetConfigureExtraArgsFn is the function prootype for getting extra arguments to configure a software
+type GetConfigureExtraArgsFn func() []string
+
+// ConfigureFn is the function prototype to configuration a specific software
+type ConfigureFn func(*buildenv.Info, []string) error
+
+// Builder gathers all the data specific to a software builder
+type Builder struct {
+	// Persistent is the path where to store all the software when we need a persistent install (in opposition to temporary install)
+	// Persistent is an empty string when there is no need for a persistent install
+	Persistent string
+
+	// SudoRequired specifies if install commands needs to be executed with sudo
+	// Note that it is assumed sudo does not require a password, there is no support for interactive password management
+	SudoRequired bool
+
+	// ScratchDir is the scratch directory assigned to the builder
+	ScratchDir string
+
+	// Configure is the function to call to configure the software
+	Configure ConfigureFn
+
+	// GetConfigureExtraArgs is the function to call to get extra arguments for the configuration command
+	GetConfigureExtraArgs GetConfigureExtraArgsFn
+}
+
+// GenericConfigure is a generic function to configure a software, basically a wrapper around autotool's configure
+func GenericConfigure(env *buildenv.Info, extraArgs []string) error {
+	var ac autotools.Config
+	ac.Install = env.InstallDir
+	ac.Source = env.SrcDir
+	err := autotools.Configure(&ac)
+	if err != nil {
+		return fmt.Errorf("failed to configure MPI: %s", err)
+	}
+
+	return nil
+}
+
+func findMakefile(env *buildenv.Info) ([]string, error) {
+	var makeExtraArgs []string
+	makefilePath := filepath.Join(env.SrcDir, "Makefile")
+	if !util.FileExists(makefilePath) {
+		makefilePath := filepath.Join(env.SrcDir, "builddir", "Makefile")
+		if util.FileExists(makefilePath) {
+			makeExtraArgs = []string{"-C", "builddir"}
+			return makeExtraArgs, nil
+		}
+	} else {
+		return makeExtraArgs, nil
+	}
+
+	return nil, fmt.Errorf("unable to locate the Makefile")
+}
+
+func (b *Builder) compile(pkg *app.Info, env *buildenv.Info) advexec.Result {
+	var res advexec.Result
+
+	log.Printf("- Compiling %s...\n", pkg.Name)
+	if env.SrcDir == "" {
+		res.Err = fmt.Errorf("invalid parameter(s)")
+		return res
+	}
+
+	makeExtraArgs, err := findMakefile(env)
+	if err != nil {
+		fmt.Println("-> No Makefile, trying to figure out how to compile/install MPI...")
+		res.Err = fmt.Errorf("failed to figure out how to compile %s", pkg.Name)
+		return res
+	}
+
+	res.Err = env.RunMake(false, makeExtraArgs, "")
+	return res
+}
+
+func (b *Builder) install(pkg *app.Info, env *buildenv.Info) advexec.Result {
+	var res advexec.Result
+
+	log.Printf("- Installing %s in %s...", pkg.Name, env.InstallDir)
+	if env.InstallDir == "" || env.BuildDir == "" {
+		res.Err = fmt.Errorf("invalid parameter(s)")
+		return res
+	}
+
+	makeExtraArgs, err := findMakefile(env)
+	if err != nil {
+		res.Err = fmt.Errorf("unable to find Makefile: %s", err)
+		return res
+	}
+	res.Err = env.RunMake(b.SudoRequired, makeExtraArgs, "install")
+	return res
+}
+
+// InstallHostMPI installs a specific version of MPI on the host
+func (b *Builder) InstallOnHost(pkg *app.Info, env *buildenv.Info) advexec.Result {
+	var res advexec.Result
+
+	// Sanity checks
+	if env.InstallDir == "" || pkg.URL == "" {
+		res.Err = fmt.Errorf("invalid parameter(s)")
+		return res
+	}
+
+	log.Printf("Installing %s on host...", pkg.Name)
+	if b.Persistent != "" && util.PathExists(env.InstallDir) {
+		log.Printf("* %s already exists, skipping installation...\n", env.InstallDir)
+		return res
+	}
+
+	log.Printf("* %s does not exists, installing from scratch\n", env.InstallDir)
+	var s buildenv.SoftwarePackage
+	s.URL = pkg.URL
+	s.Name = pkg.Name + "-" + pkg.Version
+	res.Err = env.Get(&s)
+	if res.Err != nil {
+		res.Err = fmt.Errorf("failed to download MPI from %s: %s", pkg.URL, res.Err)
+		return res
+	}
+
+	res.Err = env.Unpack()
+	if res.Err != nil {
+		res.Err = fmt.Errorf("failed to unpack %s: %s", pkg.Name, res.Err)
+		return res
+	}
+
+	// Right now, we assume we do not have to install autotools, which is a bad assumption
+	var extraArgs []string
+	if b.GetConfigureExtraArgs != nil {
+		extraArgs = b.GetConfigureExtraArgs()
+	}
+	res.Err = b.Configure(env, extraArgs)
+	if res.Err != nil {
+		res.Err = fmt.Errorf("failed to configure %s: %s", pkg.Name, res.Err)
+		return res
+	}
+
+	res = b.compile(pkg, env)
+	if res.Err != nil {
+		res.Stderr = fmt.Sprintf("failed to compile %s: %s", pkg.Name, res.Err)
+		return res
+	}
+
+	res = b.install(pkg, env)
+	if res.Err != nil {
+		res.Stderr = fmt.Sprintf("failed to install MPI: %s", res.Err)
+		return res
+	}
+
+	return res
+}
+
+// UninstallHost uninstalls a version of MPI on the host that was previously installed by our tool
+func (b *Builder) UninstallHost(env *buildenv.Info) advexec.Result {
+	var res advexec.Result
+	if b.Persistent == "" {
+		if util.PathExists(env.InstallDir) {
+			err := os.RemoveAll(env.InstallDir)
+			if err != nil {
+				res.Err = err
+				return res
+			}
+		}
+	} else {
+		log.Printf("Persistent installs mode, not uninstalling MPI from host")
+	}
+
+	return res
+}
+
+// Load is the function that will figure out the function to call for various stages of the code configuration/compilation/installation/execution
+func Load(pkg *app.Info, persistent bool) (Builder, error) {
+	var builder Builder
+	builder.Configure = GenericConfigure
+
+	// todo: proper support for persistent installs
+	var err error
+	if !persistent {
+		builder.ScratchDir, err = ioutil.TempDir("", "")
+		if err != nil {
+			return builder, err
+		}
+	} else {
+		return builder, fmt.Errorf("not implemented yet")
+	}
+	return builder, nil
+}
+
+// CompileAppOnHost compiles and installs a given non-MPI application on the host
+func (b *Builder) CompileAppOnHost(appInfo *app.Info, buildEnv *buildenv.Info) error {
+	var s buildenv.SoftwarePackage
+	s.URL = appInfo.URL
+	s.Name = appInfo.Name
+	s.InstallCmd = appInfo.InstallCmd
+	buildEnv.BuildDir = filepath.Join(b.ScratchDir, appInfo.Name)
+	buildEnv.InstallDir = filepath.Join(b.ScratchDir, "install")
+
+	if !util.PathExists(buildEnv.BuildDir) {
+		err := util.DirInit(buildEnv.BuildDir)
+		if err != nil {
+			return fmt.Errorf("failed to initialize directory %s: %s", buildEnv.BuildDir, err)
+		}
+	}
+	if !util.PathExists(buildEnv.InstallDir) {
+		err := util.DirInit(buildEnv.InstallDir)
+		if err != nil {
+			return fmt.Errorf("failed to initialize directory %s: %s", buildEnv.InstallDir, err)
+		}
+	}
+
+	log.Printf("Build the application in %s\n", buildEnv.BuildDir)
+	log.Printf("Install the application in %s\n", buildEnv.InstallDir)
+
+	// Download the app
+	err := buildEnv.Get(&s)
+	if err != nil {
+		return fmt.Errorf("unable to get the application from %s: %s", s.URL, err)
+	}
+
+	// Unpacking the app
+	err = buildEnv.Unpack()
+	if err != nil {
+		return fmt.Errorf("unable to unpack the application %s: %s", buildEnv.SrcPath, err)
+	}
+
+	// Install the app
+	log.Println("-> Building the application...")
+	err = buildEnv.Install(&s)
+	if err != nil {
+		return fmt.Errorf("unable to install package: %s", err)
+	}
+
+	// todo: we do not have a good way to know if an app is actually install in InstallDir or
+	// if we must just use the binary in BuildDir. For now we assume that we use the binary in
+	// BuildDir.
+	appInfo.BinPath = filepath.Join(buildEnv.SrcDir, appInfo.BinName)
+	log.Printf("-> Successfully created %s\n", appInfo.BinPath)
+
+	return nil
+
+}
