@@ -27,6 +27,10 @@ import (
 	"github.com/gvallee/go_util/pkg/util"
 )
 
+const (
+	defaultDirMode = 0755
+)
+
 // Info gathers the details of the build environment
 type Info struct {
 	// SrcPath is the path to the downloaded tarball
@@ -264,41 +268,43 @@ func (env *Info) Get(p *app.Info) error {
 
 func (env *Info) download(p *app.Info) error {
 	// Sanity checks
-	if p.URL == "" || env.BuildDir == "" {
+	if p.URL == "" || env.SrcDir == "" {
 		return fmt.Errorf("invalid parameter(s)")
 	}
 
-	log.Printf("- Downloading %s from %s...", p.Name, p.URL)
+	targetDir := filepath.Join(env.SrcDir, p.Name)
+	if !util.PathExists(targetDir) {
+		err := os.Mkdir(targetDir, defaultDirMode)
+		if err != nil {
+			return err
+		}
+	}
+	targetFile := filepath.Join(targetDir, filepath.Base(p.URL))
+	if util.FileExists(targetFile) {
+		log.Printf("- %s already exists, not downloading...", targetFile)
+	} else {
+		log.Printf("- Downloading %s from %s into %s...", p.Name, p.URL, targetDir)
 
-	// todo: do not assume wget
-	binPath, err := exec.LookPath("wget")
-	if err != nil {
-		return fmt.Errorf("cannot find wget: %s", err)
+		// todo: do not assume wget
+		binPath, err := exec.LookPath("wget")
+		if err != nil {
+			return fmt.Errorf("cannot find wget: %s", err)
+		}
+
+		log.Printf("* Executing from %s: %s %s", targetDir, binPath, p.URL)
+		var stdout, stderr bytes.Buffer
+		cmd := exec.Command(binPath, p.URL)
+		cmd.Dir = targetDir
+		cmd.Stderr = &stderr
+		cmd.Stdout = &stdout
+		err = cmd.Run()
+		if err != nil {
+			return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
+		}
 	}
 
-	log.Printf("* Executing from %s: %s %s", env.BuildDir, binPath, p.URL)
-	var stdout, stderr bytes.Buffer
-	cmd := exec.Command(binPath, p.URL)
-	cmd.Dir = env.BuildDir
-	cmd.Stderr = &stderr
-	cmd.Stdout = &stdout
-	err = cmd.Run()
-	if err != nil {
-		return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
-	}
-
-	// todo: we currently assume that we have one and only one file in the
-	// directory This is not a fair assumption, especially while debugging
-	// when we do not wipe out the temporary directories
-	files, err := ioutil.ReadDir(env.BuildDir)
-	if err != nil {
-		return fmt.Errorf("failed to read directory %s: %s", env.BuildDir, err)
-	}
-	if len(files) != 1 {
-		return fmt.Errorf("inconsistent temporary %s directory, %d files instead of 1", env.BuildDir, len(files))
-	}
-	p.Tarball = files[0].Name()
-	env.SrcPath = filepath.Join(env.BuildDir, files[0].Name())
+	p.Tarball = filepath.Base(targetFile)
+	env.SrcPath = targetFile
 
 	return nil
 }

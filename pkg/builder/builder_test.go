@@ -7,7 +7,11 @@ package builder
 
 import (
 	"io/ioutil"
+	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/gvallee/go_util/pkg/util"
 )
 
 func TestInstall(t *testing.T) {
@@ -18,22 +22,29 @@ func TestInstall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unable to create scratch directory: %s", err)
 	}
+	defer os.RemoveAll(b.Env.ScratchDir)
+	t.Logf("Scratch directory: %s", b.Env.ScratchDir)
 
 	b.Env.InstallDir, err = ioutil.TempDir("", "")
 	if err != nil {
 		t.Fatalf("unable to create temporary directory: %s", err)
 	}
+	defer os.RemoveAll(b.Env.InstallDir)
+	t.Logf("Install directory: %s", b.Env.InstallDir)
 
 	b.Env.BuildDir, err = ioutil.TempDir("", "")
 	if err != nil {
 		t.Fatalf("unable to create build directory: %s", err)
 	}
+	defer os.RemoveAll(b.Env.BuildDir)
+	t.Logf("Build directory: %s", b.Env.BuildDir)
 
 	b.Env.SrcDir, err = ioutil.TempDir("", "")
 	if err != nil {
 		t.Fatalf("unable to create source directory: %s", err)
 	}
-
+	defer os.RemoveAll(b.Env.SrcDir)
+	t.Logf("Source directory: %s", b.Env.SrcDir)
 	b.App.Name = "helloworld"
 	b.App.URL = "https://github.com/gvallee/c_hello_world/archive/1.0.0.tar.gz"
 	b.App.Version = "1.0.0"
@@ -49,6 +60,11 @@ func TestInstall(t *testing.T) {
 
 	res := b.Install()
 	if res.Err != nil {
-		t.Fatalf("unable to install the software package: %s", err)
+		t.Fatalf("unable to install the software package: %s", res.Err)
+	}
+
+	expectedBinary := filepath.Join(b.Env.InstallDir, b.App.Name, "bin", "helloworld")
+	if !util.FileExists(expectedBinary) {
+		t.Fatalf("expected binary %s does not exist", expectedBinary)
 	}
 }

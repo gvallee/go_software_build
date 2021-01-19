@@ -31,7 +31,7 @@ const (
 type GetConfigureExtraArgsFn func() []string
 
 // ConfigureFn is the function prototype to configuration a specific software
-type ConfigureFn func(*buildenv.Info, []string) error
+type ConfigureFn func(*buildenv.Info, string, []string) error
 
 // Builder gathers all the data specific to a software builder
 type Builder struct {
@@ -57,9 +57,9 @@ type Builder struct {
 }
 
 // GenericConfigure is a generic function to configure a software, basically a wrapper around autotool's configure
-func GenericConfigure(env *buildenv.Info, extraArgs []string) error {
+func GenericConfigure(env *buildenv.Info, appName string, extraArgs []string) error {
 	var ac autotools.Config
-	ac.Install = env.InstallDir
+	ac.Install = filepath.Join(env.InstallDir, appName)
 	ac.Source = env.SrcDir
 	err := autotools.Configure(&ac)
 	if err != nil {
@@ -108,11 +108,21 @@ func (b *Builder) compile(pkg *app.Info, env *buildenv.Info) advexec.Result {
 func (b *Builder) install(pkg *app.Info, env *buildenv.Info) advexec.Result {
 	var res advexec.Result
 
-	log.Printf("- Installing %s in %s...", pkg.Name, env.InstallDir)
 	if env.InstallDir == "" || env.BuildDir == "" {
 		res.Err = fmt.Errorf("invalid parameter(s)")
 		return res
 	}
+
+	targetDir := filepath.Join(env.InstallDir, pkg.Name)
+	if !util.PathExists(targetDir) {
+		err := os.Mkdir(targetDir, 0755)
+		if err != nil {
+			res.Err = err
+			return res
+		}
+	}
+
+	log.Printf("- Installing %s in %s...", pkg.Name, targetDir)
 
 	makeExtraArgs, err := findMakefile(env)
 	if err != nil {
@@ -135,7 +145,7 @@ func (b *Builder) Install() advexec.Result {
 
 	log.Printf("Installing %s on host...", b.App.Name)
 	if b.Persistent != "" && util.PathExists(b.Env.InstallDir) {
-		log.Printf("* %s already exists, skipping installation...\n", b.Env.InstallDir)
+		res.Err = fmt.Errorf("* %s already exists, skipping installation...\n", b.Env.InstallDir)
 		return res
 	}
 
@@ -143,6 +153,10 @@ func (b *Builder) Install() advexec.Result {
 	res.Err = b.Env.Get(&b.App)
 	if res.Err != nil {
 		res.Err = fmt.Errorf("failed to download software from %s: %s", b.App.URL, res.Err)
+		return res
+	}
+	if b.Env.SrcPath == "" {
+		res.Err = fmt.Errorf("failed to get a path to the source")
 		return res
 	}
 
@@ -157,7 +171,7 @@ func (b *Builder) Install() advexec.Result {
 	if b.GetConfigureExtraArgs != nil {
 		extraArgs = b.GetConfigureExtraArgs()
 	}
-	res.Err = b.Configure(&b.Env, extraArgs)
+	res.Err = b.Configure(&b.Env, b.App.Name, extraArgs)
 	if res.Err != nil {
 		res.Err = fmt.Errorf("failed to configure %s: %s", b.App.Name, res.Err)
 		return res
