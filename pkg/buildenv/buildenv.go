@@ -23,22 +23,9 @@ import (
 	"strings"
 
 	"github.com/gvallee/go_exec/pkg/advexec"
+	"github.com/gvallee/go_software_build/pkg/app"
 	"github.com/gvallee/go_util/pkg/util"
 )
-
-// SoftwarePackage gathers all the information related to the software package to prepare in the build environment
-type SoftwarePackage struct {
-	// Name is the name with which the software package is recognized
-	Name string
-
-	// URL is the source of the software
-	URL string
-
-	// InstallCmd is the command used to install the software
-	InstallCmd string
-
-	tarball string
-}
 
 // Info gathers the details of the build environment
 type Info struct {
@@ -73,14 +60,14 @@ func (env *Info) Unpack() error {
 	// Figure out the extension of the tarball
 	if util.IsDir(env.SrcPath) {
 		// If we point to a directory, it is something like a Git checkout so nothing to do
-		log.Printf("%s does not seem to need to be unpacked, skipping...", env.SrcPath)
+		log.Printf("%s does not seem to need to be unpacked (directory), skipping...", env.SrcPath)
 		return nil
 	}
 
 	format := util.DetectTarballFormat(env.SrcPath)
 	if format == "" {
 		// A typical use case here is a single file that just needs to be compiled
-		log.Printf("%s does not seem to need to be unpacked, skipping...", env.SrcPath)
+		log.Printf("%s does not seem to need to be unpacked (unsupported format?), skipping...", env.SrcPath)
 		env.SrcDir = env.BuildDir
 		return nil
 	}
@@ -142,7 +129,7 @@ func (env *Info) RunMake(sudo bool, args []string, stage string) error {
 		makeCmd.ManifestName = strings.Join(args, "_")
 	}
 
-	args = append([]string{"-j4"}, args...)
+	args = append([]string{"-j"}, args...)
 	logMsg := "make " + strings.Join(args, " ")
 	if !sudo {
 		makeCmd.BinPath = "make"
@@ -169,30 +156,30 @@ func (env *Info) RunMake(sudo bool, args []string, stage string) error {
 	return nil
 }
 
-func (env *Info) copyTarball(p *SoftwarePackage) error {
+func (env *Info) copyTarball(p *app.Info) error {
 	// Some sanity checks
 	if p.URL == "" {
 		return fmt.Errorf("invalid parameter(s)")
 	}
 
 	// Figure out the name of the file if we do not already have it
-	if p.tarball == "" {
-		p.tarball = path.Base(p.URL)
+	if p.Tarball == "" {
+		p.Tarball = path.Base(p.URL)
 	}
 
-	targetTarballPath := filepath.Join(env.BuildDir, p.tarball)
+	targetTarballPath := filepath.Join(env.BuildDir, p.Tarball)
 	// The begining of the URL starts with 'file://' which we do not want
 	err := util.CopyFile(p.URL[7:], targetTarballPath)
 	if err != nil {
 		return fmt.Errorf("cannot copy file %s to %s: %s", p.URL, targetTarballPath, err)
 	}
 
-	env.SrcPath = filepath.Join(env.BuildDir, p.tarball)
+	env.SrcPath = filepath.Join(env.BuildDir, p.Tarball)
 
 	return nil
 }
 
-func (env *Info) gitCheckout(p *SoftwarePackage) error {
+func (env *Info) gitCheckout(p *app.Info) error {
 	// todo: should it be cached in sysCfg and passed in?
 	gitBin, err := exec.LookPath("git")
 	if err != nil {
@@ -238,7 +225,7 @@ func (env *Info) gitCheckout(p *SoftwarePackage) error {
 }
 
 // Get is the function to get a given source code
-func (env *Info) Get(p *SoftwarePackage) error {
+func (env *Info) Get(p *app.Info) error {
 	log.Printf("- Getting %s from %s...\n", p.Name, p.URL)
 
 	// Sanity checks
@@ -275,7 +262,7 @@ func (env *Info) Get(p *SoftwarePackage) error {
 	return nil
 }
 
-func (env *Info) download(p *SoftwarePackage) error {
+func (env *Info) download(p *app.Info) error {
 	// Sanity checks
 	if p.URL == "" || env.BuildDir == "" {
 		return fmt.Errorf("invalid parameter(s)")
@@ -310,14 +297,14 @@ func (env *Info) download(p *SoftwarePackage) error {
 	if len(files) != 1 {
 		return fmt.Errorf("inconsistent temporary %s directory, %d files instead of 1", env.BuildDir, len(files))
 	}
-	p.tarball = files[0].Name()
+	p.Tarball = files[0].Name()
 	env.SrcPath = filepath.Join(env.BuildDir, files[0].Name())
 
 	return nil
 }
 
 // IsInstalled checks whether a specific software package is already installed in a specific build environment
-func (env *Info) IsInstalled(p *SoftwarePackage) bool {
+func (env *Info) IsInstalled(p *app.Info) bool {
 	switch util.DetectURLType(p.URL) {
 	case util.FileURL:
 		filename := path.Base(p.URL)
@@ -370,7 +357,7 @@ func (env *Info) lookPath(bin string) string {
 }
 
 // Install is a generic function to install a software
-func (env *Info) Install(p *SoftwarePackage) error {
+func (env *Info) Install(p *app.Info) error {
 	if p.InstallCmd == "" {
 		log.Println("* Application does not need installation, skipping...")
 		return nil

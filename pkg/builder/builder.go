@@ -12,7 +12,6 @@ package builder
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -44,14 +43,17 @@ type Builder struct {
 	// Note that it is assumed sudo does not require a password, there is no support for interactive password management
 	SudoRequired bool
 
-	// ScratchDir is the scratch directory assigned to the builder
-	ScratchDir string
-
 	// Configure is the function to call to configure the software
 	Configure ConfigureFn
 
 	// GetConfigureExtraArgs is the function to call to get extra arguments for the configuration command
 	GetConfigureExtraArgs GetConfigureExtraArgsFn
+
+	// App is the application the builder is associated with
+	App app.Info
+
+	// Env is the environment to build/install the software package
+	Env buildenv.Info
 }
 
 // GenericConfigure is a generic function to configure a software, basically a wrapper around autotool's configure
@@ -121,35 +123,32 @@ func (b *Builder) install(pkg *app.Info, env *buildenv.Info) advexec.Result {
 	return res
 }
 
-// InstallHostMPI installs a specific version of MPI on the host
-func (b *Builder) InstallOnHost(pkg *app.Info, env *buildenv.Info) advexec.Result {
+// Install installs a software package on the host
+func (b *Builder) Install() advexec.Result {
 	var res advexec.Result
 
 	// Sanity checks
-	if env.InstallDir == "" || pkg.URL == "" {
+	if b.Env.InstallDir == "" || b.App.URL == "" {
 		res.Err = fmt.Errorf("invalid parameter(s)")
 		return res
 	}
 
-	log.Printf("Installing %s on host...", pkg.Name)
-	if b.Persistent != "" && util.PathExists(env.InstallDir) {
-		log.Printf("* %s already exists, skipping installation...\n", env.InstallDir)
+	log.Printf("Installing %s on host...", b.App.Name)
+	if b.Persistent != "" && util.PathExists(b.Env.InstallDir) {
+		log.Printf("* %s already exists, skipping installation...\n", b.Env.InstallDir)
 		return res
 	}
 
-	log.Printf("* %s does not exists, installing from scratch\n", env.InstallDir)
-	var s buildenv.SoftwarePackage
-	s.URL = pkg.URL
-	s.Name = pkg.Name + "-" + pkg.Version
-	res.Err = env.Get(&s)
+	log.Printf("* %s does not exists, installing from scratch\n", b.Env.InstallDir)
+	res.Err = b.Env.Get(&b.App)
 	if res.Err != nil {
-		res.Err = fmt.Errorf("failed to download MPI from %s: %s", pkg.URL, res.Err)
+		res.Err = fmt.Errorf("failed to download software from %s: %s", b.App.URL, res.Err)
 		return res
 	}
 
-	res.Err = env.Unpack()
+	res.Err = b.Env.Unpack()
 	if res.Err != nil {
-		res.Err = fmt.Errorf("failed to unpack %s: %s", pkg.Name, res.Err)
+		res.Err = fmt.Errorf("failed to unpack %s: %s", b.App.Name, res.Err)
 		return res
 	}
 
@@ -158,71 +157,78 @@ func (b *Builder) InstallOnHost(pkg *app.Info, env *buildenv.Info) advexec.Resul
 	if b.GetConfigureExtraArgs != nil {
 		extraArgs = b.GetConfigureExtraArgs()
 	}
-	res.Err = b.Configure(env, extraArgs)
+	res.Err = b.Configure(&b.Env, extraArgs)
 	if res.Err != nil {
-		res.Err = fmt.Errorf("failed to configure %s: %s", pkg.Name, res.Err)
+		res.Err = fmt.Errorf("failed to configure %s: %s", b.App.Name, res.Err)
 		return res
 	}
 
-	res = b.compile(pkg, env)
+	res = b.compile(&b.App, &b.Env)
 	if res.Err != nil {
-		res.Stderr = fmt.Sprintf("failed to compile %s: %s", pkg.Name, res.Err)
+		res.Stderr = fmt.Sprintf("failed to compile %s: %s", b.App, res.Err)
 		return res
 	}
 
-	res = b.install(pkg, env)
+	res = b.install(&b.App, &b.Env)
 	if res.Err != nil {
-		res.Stderr = fmt.Sprintf("failed to install MPI: %s", res.Err)
+		res.Stderr = fmt.Sprintf("failed to install software: %s", res.Err)
 		return res
 	}
 
 	return res
 }
 
-// UninstallHost uninstalls a version of MPI on the host that was previously installed by our tool
-func (b *Builder) UninstallHost(env *buildenv.Info) advexec.Result {
+// Uninstall uninstalls a version of software from the host that was previously installed by our tool
+func (b *Builder) Uninstall() advexec.Result {
 	var res advexec.Result
 	if b.Persistent == "" {
-		if util.PathExists(env.InstallDir) {
-			err := os.RemoveAll(env.InstallDir)
+		if util.PathExists(b.Env.InstallDir) {
+			err := os.RemoveAll(b.Env.InstallDir)
 			if err != nil {
 				res.Err = err
 				return res
 			}
 		}
 	} else {
-		log.Printf("Persistent installs mode, not uninstalling MPI from host")
+		log.Printf("Persistent installs mode, not uninstalling software from host")
 	}
 
 	return res
 }
 
 // Load is the function that will figure out the function to call for various stages of the code configuration/compilation/installation/execution
-func Load(pkg *app.Info, persistent bool) (Builder, error) {
-	var builder Builder
-	builder.Configure = GenericConfigure
+func (b *Builder) Load(persistent bool) error {
+	// fixme: at this point, we know the app and we have the builder object
+	// so we should be able to do a autodetect instead of forcing autotools
+	b.Configure = GenericConfigure
 
-	// todo: proper support for persistent installs
-	var err error
-	if !persistent {
-		builder.ScratchDir, err = ioutil.TempDir("", "")
-		if err != nil {
-			return builder, err
-		}
-	} else {
-		return builder, fmt.Errorf("not implemented yet")
+	if b.App.Name == "" {
+		return fmt.Errorf("Application's name is undefined")
 	}
-	return builder, nil
+
+	if b.App.URL == "" {
+		return fmt.Errorf("URL to download application is undefined")
+	}
+
+	if b.Env.ScratchDir == "" {
+		return fmt.Errorf("scratch directory is undefined")
+	}
+
+	if b.Env.SrcDir == "" {
+		return fmt.Errorf("source directory is undefined")
+	}
+
+	return nil
 }
 
-// CompileAppOnHost compiles and installs a given non-MPI application on the host
-func (b *Builder) CompileAppOnHost(appInfo *app.Info, buildEnv *buildenv.Info) error {
-	var s buildenv.SoftwarePackage
-	s.URL = appInfo.URL
-	s.Name = appInfo.Name
-	s.InstallCmd = appInfo.InstallCmd
-	buildEnv.BuildDir = filepath.Join(b.ScratchDir, appInfo.Name)
-	buildEnv.InstallDir = filepath.Join(b.ScratchDir, "install")
+// Compile compiles and installs a given application on the host
+func (b *Builder) Compile() error {
+	// The builder has a general environment (set by caller) but we need a detailed
+	// environment specific to the app
+	var buildEnv buildenv.Info
+	buildEnv.BuildDir = filepath.Join(b.Env.ScratchDir, b.App.Name)
+	buildEnv.InstallDir = filepath.Join(b.Env.InstallDir, b.App.Name)
+	buildEnv.SrcPath = filepath.Join(b.Env.SrcDir, filepath.Base(b.App.URL))
 
 	if !util.PathExists(buildEnv.BuildDir) {
 		err := util.DirInit(buildEnv.BuildDir)
@@ -241,9 +247,9 @@ func (b *Builder) CompileAppOnHost(appInfo *app.Info, buildEnv *buildenv.Info) e
 	log.Printf("Install the application in %s\n", buildEnv.InstallDir)
 
 	// Download the app
-	err := buildEnv.Get(&s)
+	err := buildEnv.Get(&b.App)
 	if err != nil {
-		return fmt.Errorf("unable to get the application from %s: %s", s.URL, err)
+		return fmt.Errorf("unable to get the application from %s: %s", b.App.URL, err)
 	}
 
 	// Unpacking the app
@@ -254,7 +260,7 @@ func (b *Builder) CompileAppOnHost(appInfo *app.Info, buildEnv *buildenv.Info) e
 
 	// Install the app
 	log.Println("-> Building the application...")
-	err = buildEnv.Install(&s)
+	err = buildEnv.Install(&b.App)
 	if err != nil {
 		return fmt.Errorf("unable to install package: %s", err)
 	}
@@ -262,9 +268,8 @@ func (b *Builder) CompileAppOnHost(appInfo *app.Info, buildEnv *buildenv.Info) e
 	// todo: we do not have a good way to know if an app is actually install in InstallDir or
 	// if we must just use the binary in BuildDir. For now we assume that we use the binary in
 	// BuildDir.
-	appInfo.BinPath = filepath.Join(buildEnv.SrcDir, appInfo.BinName)
-	log.Printf("-> Successfully created %s\n", appInfo.BinPath)
+	b.App.BinPath = filepath.Join(buildEnv.SrcDir, b.App.BinName)
+	log.Printf("-> Successfully created %s\n", b.App.BinPath)
 
 	return nil
-
 }

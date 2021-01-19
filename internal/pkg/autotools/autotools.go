@@ -28,12 +28,38 @@ type Config struct {
 	ExtraConfigureArgs []string
 }
 
+func autogen(cfg *Config) error {
+	autogenPath := filepath.Join(cfg.Source, "autogen.sh")
+	if !util.FileExists(autogenPath) {
+		fmt.Printf("-> %s does not exist, skipping\n", autogenPath)
+		return nil
+	}
+
+	var cmd advexec.Advcmd
+	cmd.BinPath = "./autogen.sh"
+	cmd.ManifestName = "autogen"
+	cmd.ManifestDir = cfg.Install
+	cmd.ExecDir = cfg.Source
+	res := cmd.Run()
+	if res.Err != nil {
+		return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", res.Err, res.Stdout, res.Stderr)
+	}
+
+	return nil
+}
+
 // Configure handles the classic configure commands
 func Configure(cfg *Config) error {
+	// First run autogen when necessary
+	err := autogen(cfg)
+	if err != nil {
+		return err
+	}
+
 	configurePath := filepath.Join(cfg.Source, "configure")
 	if !util.FileExists(configurePath) {
 		fmt.Printf("-> %s does not exist, skipping the configuration step\n", configurePath)
-		return fmt.Errorf("%s does not exist, skipping the configuration step\n", configurePath)
+		return nil
 	}
 
 	var cmdArgs []string

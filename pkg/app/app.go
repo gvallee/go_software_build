@@ -27,4 +27,7 @@ type Info struct {
 
 	// Version is the version of the application to concider
 	Version string
+
+	// Tarball is the name of the tarball of the application
+	Tarball string
 }
