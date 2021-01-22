@@ -63,7 +63,7 @@ func GenericConfigure(env *buildenv.Info, appName string, extraArgs []string) er
 	ac.Source = env.SrcDir
 	err := autotools.Configure(&ac)
 	if err != nil {
-		return fmt.Errorf("failed to configure MPI: %s", err)
+		return fmt.Errorf("failed to configure software: %s", err)
 	}
 
 	return nil

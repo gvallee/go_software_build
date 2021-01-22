@@ -4,11 +4,9 @@
 // LICENSE.md file distributed with the sources of this project regarding your
 // rights to use or distribute this software.
 
-/*
- * buildenv is a package that provides all the capabilities to deal with a build environment,
- * from defining where the software should be compiled and install, to the actual configuration,
- * compilation and installation of software.
- */
+// Package buildenv is a package that provides all the capabilities to deal with a build environment,
+// from defining where the software should be compiled and install, to the actual configuration,
+// compilation and installation of software.
 package buildenv
 
 import (
@@ -245,9 +243,19 @@ func (env *Info) Get(p *app.Info) error {
 
 	switch urlFormat {
 	case util.FileURL:
-		err := env.copyTarball(p)
-		if err != nil {
-			return fmt.Errorf("impossible to copy the tarball: %s", err)
+		path := p.URL[7:]
+		if !util.IsDir(path) {
+			err := env.copyTarball(p)
+			if err != nil {
+				return fmt.Errorf("impossible to copy the tarball: %s", err)
+			}
+		} else {
+			cmd := exec.Command("cp", "-r", path, env.BuildDir)
+			cmd.Dir = env.BuildDir
+			err := cmd.Run()
+			if err != nil {
+				return fmt.Errorf("unable to copy %s into %s: %s", path, env.BuildDir, err)
+			}
 		}
 	case util.HttpURL:
 		err := env.download(p)
@@ -417,23 +425,23 @@ func createHostEnvCfg(env *Info) error {
 }
 
 // Init ensures that the buildenv is correctly initialized
-func (e *Info) Init() error {
-	if !util.PathExists(e.ScratchDir) {
-		err := os.MkdirAll(e.ScratchDir, 0755)
+func (env *Info) Init() error {
+	if !util.PathExists(env.ScratchDir) {
+		err := os.MkdirAll(env.ScratchDir, 0755)
 		if err != nil {
-			return fmt.Errorf("failed to create scratch directory %s: %s", e.ScratchDir, err)
+			return fmt.Errorf("failed to create scratch directory %s: %s", env.ScratchDir, err)
 		}
 	}
-	if !util.PathExists(e.BuildDir) {
-		err := os.MkdirAll(e.BuildDir, 0755)
+	if !util.PathExists(env.BuildDir) {
+		err := os.MkdirAll(env.BuildDir, 0755)
 		if err != nil {
-			return fmt.Errorf("failed to create build directory %s: %s", e.BuildDir, err)
+			return fmt.Errorf("failed to create build directory %s: %s", env.BuildDir, err)
 		}
 	}
-	if !util.PathExists(e.InstallDir) {
-		err := os.MkdirAll(e.InstallDir, 0755)
+	if !util.PathExists(env.InstallDir) {
+		err := os.MkdirAll(env.InstallDir, 0755)
 		if err != nil {
-			return fmt.Errorf("failed to create build directory %s: %s", e.InstallDir, err)
+			return fmt.Errorf("failed to create build directory %s: %s", env.InstallDir, err)
 		}
 	}
 	return nil

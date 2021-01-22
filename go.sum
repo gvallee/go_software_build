@@ -1,5 +1,3 @@
-github.com/gvallee/go_exec v0.0.1 h1:yNP5/fTWnnym4wT17JIEBiRAxOEhclOePdwxCxWsEZ8=
-github.com/gvallee/go_exec v0.0.1/go.mod h1:4AwegK9oPhkgwkd0rjlTwxRw//8cW4pPcCSFLZ6+LZg=
 github.com/gvallee/go_exec v0.0.2 h1:qxTlfCI5aiPmElCn+kCip++mBgKx6TNxmVOfh7lP/Ok=
 github.com/gvallee/go_exec v0.0.2/go.mod h1:b8ZYmmYCaHo/g92ZHvYK8LnTp06sdTU3u2CjisIyA9w=
 github.com/gvallee/go_util v1.0.0/go.mod h1:fTexpwdH/n05Ziu0TXJIQsr7E+46QpBxNdeOOsyC0/s=
