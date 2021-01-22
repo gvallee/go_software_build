@@ -15,7 +15,7 @@ import (
 	"github.com/gvallee/go_util/pkg/util"
 )
 
-func TestGet(t *testing.T) {
+func TestDirURLGet(t *testing.T) {
 	var testEnv Info
 	var appInfo app.Info
 
@@ -44,7 +44,7 @@ func TestGet(t *testing.T) {
 		t.Fatalf("Get() failed: %s", err)
 	}
 
-	expectedDir := filepath.Join(testEnv.BuildDir, filepath.Base(dir1))
+	expectedDir := filepath.Join(testEnv.BuildDir, appInfo.Name, filepath.Base(dir1))
 	expectedFile := filepath.Join(expectedDir, filepath.Base(tempFile.Name()))
 	if !util.FileExists(expectedFile) {
 		t.Fatalf("expected file %s does not exist", expectedFile)
@@ -52,5 +52,34 @@ func TestGet(t *testing.T) {
 	
 	if testEnv.SrcPath != expectedDir {
 		t.Fatalf("source path has not been properly set (%s instead of %s)", testEnv.SrcPath, expectedDir)
+	}
+}
+
+func TestFileURLGet(t *testing.T) {
+	var a app.Info
+	a.Name = "helloworld"
+	a.URL = "https://github.com/gvallee/c_hello_world/archive/1.0.0.tar.gz"
+	a.Version = "1.0.0"
+
+	var testEnv Info
+	var err error
+	testEnv.SrcDir, err = ioutil.TempDir("", "")
+	if err != nil {
+		t.Fatalf("unable to create temporary directory: %s", err)
+	}
+	defer os.RemoveAll(testEnv.BuildDir)
+
+	err = testEnv.Get(&a)
+	if err != nil {
+		t.Fatalf("unable to download %s: %s", a.URL, err)
+	}
+
+	expectedFile := filepath.Join(testEnv.SrcDir, a.Name, filepath.Base(a.URL))
+	if !util.FileExists(expectedFile) {
+		t.Fatalf("expected file %s does not exist", expectedFile)
+	}
+
+	if testEnv.SrcPath != expectedFile {
+		t.Fatalf("source path has not been properly set (%s instead of %s)", testEnv.SrcPath, expectedFile)
 	}
 }

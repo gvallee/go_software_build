@@ -161,7 +161,7 @@ func (env *Info) RunMake(sudo bool, args []string, stage string) error {
 func (env *Info) copyTarball(p *app.Info) error {
 	// Some sanity checks
 	if p.URL == "" {
-		return fmt.Errorf("invalid parameter(s)")
+		return fmt.Errorf("invalid copyTarball() parameter(s)")
 	}
 
 	// Figure out the name of the file if we do not already have it
@@ -169,14 +169,14 @@ func (env *Info) copyTarball(p *app.Info) error {
 		p.Tarball = path.Base(p.URL)
 	}
 
-	targetTarballPath := filepath.Join(env.BuildDir, p.Tarball)
+	targetTarballPath := filepath.Join(env.BuildDir, p.Name, p.Tarball)
 	// The begining of the URL starts with 'file://' which we do not want
 	err := util.CopyFile(p.URL[7:], targetTarballPath)
 	if err != nil {
 		return fmt.Errorf("cannot copy file %s to %s: %s", p.URL, targetTarballPath, err)
 	}
 
-	env.SrcPath = filepath.Join(env.BuildDir, p.Tarball)
+	env.SrcPath = targetTarballPath
 
 	return nil
 }
@@ -232,7 +232,7 @@ func (env *Info) Get(p *app.Info) error {
 
 	// Sanity checks
 	if p.URL == "" {
-		return fmt.Errorf("invalid parameter(s)")
+		return fmt.Errorf("invalid Get() parameter(s)")
 	}
 
 	// Detect the type of URL, e.g., file vs. http*
@@ -250,13 +250,19 @@ func (env *Info) Get(p *app.Info) error {
 				return fmt.Errorf("impossible to copy the tarball: %s", err)
 			}
 		} else {
-			cmd := exec.Command("cp", "-r", path, env.BuildDir)
+			targetDir := filepath.Join(env.BuildDir, p.Name)
+			err := os.Mkdir(targetDir, 0755)
+			if err != nil {
+				return err
+			}
+			targetDir = filepath.Join(targetDir, filepath.Base(path))
+			cmd := exec.Command("cp", "-r", path, targetDir)
 			cmd.Dir = env.BuildDir
-			err := cmd.Run()
+			err = cmd.Run()
 			if err != nil {
 				return fmt.Errorf("unable to copy %s into %s: %s", path, env.BuildDir, err)
 			}
-			env.SrcPath = filepath.Join(env.BuildDir, filepath.Base(path))
+			env.SrcPath = targetDir
 		}
 	case util.HttpURL:
 		err := env.download(p)
@@ -278,7 +284,7 @@ func (env *Info) Get(p *app.Info) error {
 func (env *Info) download(p *app.Info) error {
 	// Sanity checks
 	if p.URL == "" || env.SrcDir == "" {
-		return fmt.Errorf("invalid parameter(s)")
+		return fmt.Errorf("invalid download() parameter(s)")
 	}
 
 	targetDir := filepath.Join(env.SrcDir, p.Name)
