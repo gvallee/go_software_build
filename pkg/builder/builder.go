@@ -4,10 +4,8 @@
 // LICENSE.md file distributed with the sources of this project regarding your
 // rights to use or distribute this software.
 
-/*
- * builder is a package that provides a set of APIs to help configure, install and uninstall MPI
- * on the host or in a container.
- */
+// Package builder is a package that provides a set of APIs to help configure, install and uninstall software
+// on the host.
 package builder
 
 import (
@@ -21,10 +19,6 @@ import (
 	"github.com/gvallee/go_software_build/pkg/app"
 	"github.com/gvallee/go_software_build/pkg/buildenv"
 	"github.com/gvallee/go_util/pkg/util"
-)
-
-const (
-	DefaultUbuntuDistro = "ubuntu:disco"
 )
 
 // GetConfigureExtraArgsFn is the function prootype for getting extra arguments to configure a software
@@ -69,20 +63,21 @@ func GenericConfigure(env *buildenv.Info, appName string, extraArgs []string) er
 	return nil
 }
 
-func findMakefile(env *buildenv.Info) ([]string, error) {
+func findMakefile(env *buildenv.Info) (string, []string, error) {
 	var makeExtraArgs []string
 	makefilePath := filepath.Join(env.SrcDir, "Makefile")
+	log.Printf("-> Checking for %s...", makefilePath)
 	if !util.FileExists(makefilePath) {
 		makefilePath := filepath.Join(env.SrcDir, "builddir", "Makefile")
 		if util.FileExists(makefilePath) {
 			makeExtraArgs = []string{"-C", "builddir"}
-			return makeExtraArgs, nil
+			return makefilePath, makeExtraArgs, nil
 		}
 	} else {
-		return makeExtraArgs, nil
+		return makefilePath, makeExtraArgs, nil
 	}
 
-	return nil, fmt.Errorf("unable to locate the Makefile")
+	return "", nil, fmt.Errorf("unable to locate the Makefile")
 }
 
 func (b *Builder) compile(pkg *app.Info, env *buildenv.Info) advexec.Result {
@@ -94,14 +89,15 @@ func (b *Builder) compile(pkg *app.Info, env *buildenv.Info) advexec.Result {
 		return res
 	}
 
-	makeExtraArgs, err := findMakefile(env)
+	makefilePath, makeExtraArgs, err := findMakefile(env)
 	if err != nil {
-		fmt.Println("-> No Makefile, trying to figure out how to compile/install MPI...")
+		fmt.Printf("-> No Makefile, trying to figure out how to compile/install %s...", pkg.Name)
 		res.Err = fmt.Errorf("failed to figure out how to compile %s", pkg.Name)
 		return res
 	}
 
-	res.Err = env.RunMake(false, makeExtraArgs, "")
+	makefileStage := ""
+	res.Err = env.RunMake(false, makefileStage, makefilePath, makeExtraArgs)
 	return res
 }
 
@@ -123,13 +119,12 @@ func (b *Builder) install(pkg *app.Info, env *buildenv.Info) advexec.Result {
 	}
 
 	log.Printf("- Installing %s in %s...", pkg.Name, targetDir)
-
-	makeExtraArgs, err := findMakefile(env)
+	makefilePath, makeExtraArgs, err := findMakefile(env)
 	if err != nil {
 		res.Err = fmt.Errorf("unable to find Makefile: %s", err)
 		return res
 	}
-	res.Err = env.RunMake(b.SudoRequired, makeExtraArgs, "install")
+	res.Err = env.RunMake(b.SudoRequired, "install", makefilePath, makeExtraArgs)
 	return res
 }
 
@@ -145,7 +140,7 @@ func (b *Builder) Install() advexec.Result {
 
 	log.Printf("Installing %s on host...", b.App.Name)
 	if b.Persistent != "" && util.PathExists(b.Env.InstallDir) {
-		res.Err = fmt.Errorf("* %s already exists, skipping installation...\n", b.Env.InstallDir)
+		log.Printf("* %s already exists, skipping installation...", b.Env.InstallDir)
 		return res
 	}
 
@@ -228,10 +223,14 @@ func (b *Builder) Load(persistent bool) error {
 		return fmt.Errorf("scratch directory is undefined")
 	}
 
-	if b.Env.SrcDir == "" {
-		return fmt.Errorf("source directory is undefined")
+	if b.Env.BuildDir == "" {
+		return fmt.Errorf("build directory is undefined")
 	}
 
+	if b.Env.InstallDir == "" {
+		return fmt.Errorf("install directory is undefined")
+	}
+	
 	return nil
 }
 

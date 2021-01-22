@@ -39,11 +39,6 @@ func TestInstall(t *testing.T) {
 	defer os.RemoveAll(b.Env.BuildDir)
 	t.Logf("Build directory: %s", b.Env.BuildDir)
 
-	b.Env.SrcDir, err = ioutil.TempDir("", "")
-	if err != nil {
-		t.Fatalf("unable to create source directory: %s", err)
-	}
-	defer os.RemoveAll(b.Env.SrcDir)
 	t.Logf("Source directory: %s", b.Env.SrcDir)
 	b.App.Name = "helloworld"
 	b.App.URL = "https://github.com/gvallee/c_hello_world/archive/1.0.0.tar.gz"

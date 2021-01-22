@@ -32,18 +32,23 @@ const (
 // Info gathers the details of the build environment
 type Info struct {
 	// SrcPath is the path to the downloaded tarball
+	// This value is set by the tool after getting the package's source code
 	SrcPath string
 
 	// SrcDir is the directory where the source code is
+	// This value is set by the tool after getting the package's source code
 	SrcDir string
 
 	// ScratchDir is the directory where we can store temporary data
+	// This value is part of the build environment configuration
 	ScratchDir string
 
 	// InstallDir is the directory where the software needs to be installed
+	// This value is part of the build environment configuration
 	InstallDir string
 
 	// BuildDir is the directory where the software is built
+	// This value is part of the build environment configuration
 	BuildDir string
 
 	// Env is the environment to use with the build environment
@@ -87,10 +92,10 @@ func (env *Info) Unpack() error {
 	}
 
 	// Untar the package
-	log.Printf("-> Executing from %s: %s %s %s \n", env.BuildDir, tarPath, tarArg, env.SrcPath)
+	log.Printf("-> Executing from %s: %s %s %s \n", env.SrcDir, tarPath, tarArg, env.SrcPath)
 	var stdout, stderr bytes.Buffer
 	cmd := exec.Command(tarPath, tarArg, env.SrcPath)
-	cmd.Dir = env.BuildDir
+	cmd.Dir = env.SrcDir
 	cmd.Stderr = &stderr
 	cmd.Stdout = &stdout
 	err = cmd.Run()
@@ -98,27 +103,33 @@ func (env *Info) Unpack() error {
 		return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
 	}
 
-	// We do not need the package anymore, delete it
-	err = os.Remove(env.SrcPath)
-	if err != nil {
-		return fmt.Errorf("failed to delete %s: %s", env.SrcPath, err)
-	}
-
 	// We save the directory created while untaring the tarball
-	entries, err := ioutil.ReadDir(env.BuildDir)
+	entries, err := ioutil.ReadDir(env.SrcDir)
 	if err != nil {
 		return fmt.Errorf("failed to read directory %s: %s", env.BuildDir, err)
 	}
-	if len(entries) != 1 {
-		return fmt.Errorf("inconsistent temporary %s directory, %d files instead of 1", env.BuildDir, len(entries))
+	if len(entries) != 2 {
+		listDirs := ""
+		for _, e := range entries {
+			listDirs = e.Name() + ","
+			fmt.Printf("CHECKME: %s\n", e.Name())
+		}
+		return fmt.Errorf("inconsistent temporary %s directory, %d files instead of 1: %s", env.SrcDir, len(entries), listDirs)
 	}
-	env.SrcDir = filepath.Join(env.BuildDir, entries[0].Name())
+	// The source directory now has 2 entries: the tarball and the directory resulting from untaring it
+	for _, e := range entries {
+		if e.Name() != filepath.Base(env.SrcPath) {
+			env.SrcDir = filepath.Join(env.SrcDir, e.Name())
+			break
+		}
+	}
+	log.Printf("-> SrcDir is now %s", env.SrcDir)
 
 	return nil
 }
 
 // RunMake executes the appropriate command to build the software
-func (env *Info) RunMake(sudo bool, args []string, stage string) error {
+func (env *Info) RunMake(sudo bool, stage string, makefilePath string, args []string) error {
 	// Some sanity checks
 	if env.SrcDir == "" {
 		return fmt.Errorf("invalid parameter(s)")
@@ -149,7 +160,7 @@ func (env *Info) RunMake(sudo bool, args []string, stage string) error {
 	if len(env.Env) > 0 {
 		makeCmd.Env = env.Env
 	}
-	makeCmd.ExecDir = env.SrcDir
+	makeCmd.ExecDir = filepath.Dir(makefilePath)
 	res := makeCmd.Run()
 	if res.Err != nil {
 		return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", res.Err, res.Stdout, res.Stderr)
@@ -190,7 +201,14 @@ func (env *Info) gitCheckout(p *app.Info) error {
 
 	repoName := filepath.Base(p.URL)
 	repoName = strings.Replace(repoName, ".git", "", 1)
-	checkoutPath := filepath.Join(env.BuildDir, repoName)
+	targetDir := filepath.Join(env.BuildDir, p.Name)
+	if !util.PathExists(targetDir) {
+		err = os.Mkdir(targetDir, defaultDirMode)
+		if err != nil {
+			return err
+		}
+	}
+	checkoutPath := filepath.Join(targetDir, repoName)
 
 	if util.PathExists(checkoutPath) {
 		gitCmd := exec.Command(gitBin, "pull")
@@ -207,7 +225,7 @@ func (env *Info) gitCheckout(p *app.Info) error {
 	} else {
 		gitCmd := exec.Command(gitBin, "clone", p.URL)
 		log.Printf("Running from %s: %s clone %s\n", env.BuildDir, gitBin, p.URL)
-		gitCmd.Dir = env.BuildDir
+		gitCmd.Dir = targetDir
 		var stderr, stdout bytes.Buffer
 		gitCmd.Stderr = &stderr
 		gitCmd.Stdout = &stdout
@@ -263,6 +281,7 @@ func (env *Info) Get(p *app.Info) error {
 				return fmt.Errorf("unable to copy %s into %s: %s", path, env.BuildDir, err)
 			}
 			env.SrcPath = targetDir
+			env.SrcDir = targetDir
 		}
 	case util.HttpURL:
 		err := env.download(p)
@@ -283,22 +302,22 @@ func (env *Info) Get(p *app.Info) error {
 
 func (env *Info) download(p *app.Info) error {
 	// Sanity checks
-	if p.URL == "" || env.SrcDir == "" {
+	if p.URL == "" || env.BuildDir == "" {
 		return fmt.Errorf("invalid download() parameter(s)")
 	}
 
-	targetDir := filepath.Join(env.SrcDir, p.Name)
-	if !util.PathExists(targetDir) {
-		err := os.Mkdir(targetDir, defaultDirMode)
+	env.SrcDir = filepath.Join(env.BuildDir, p.Name)
+	if !util.PathExists(env.SrcDir) {
+		err := os.Mkdir(env.SrcDir, defaultDirMode)
 		if err != nil {
 			return err
 		}
 	}
-	targetFile := filepath.Join(targetDir, filepath.Base(p.URL))
+	targetFile := filepath.Join(env.SrcDir, filepath.Base(p.URL))
 	if util.FileExists(targetFile) {
 		log.Printf("- %s already exists, not downloading...", targetFile)
 	} else {
-		log.Printf("- Downloading %s from %s into %s...", p.Name, p.URL, targetDir)
+		log.Printf("- Downloading %s from %s into %s...", p.Name, p.URL, env.SrcDir)
 
 		// todo: do not assume wget
 		binPath, err := exec.LookPath("wget")
@@ -306,10 +325,10 @@ func (env *Info) download(p *app.Info) error {
 			return fmt.Errorf("cannot find wget: %s", err)
 		}
 
-		log.Printf("* Executing from %s: %s %s", targetDir, binPath, p.URL)
+		log.Printf("* Executing from %s: %s %s", env.SrcDir, binPath, p.URL)
 		var stdout, stderr bytes.Buffer
 		cmd := exec.Command(binPath, p.URL)
-		cmd.Dir = targetDir
+		cmd.Dir = env.SrcDir
 		cmd.Stderr = &stderr
 		cmd.Stdout = &stdout
 		err = cmd.Run()

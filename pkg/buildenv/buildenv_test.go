@@ -15,6 +15,16 @@ import (
 	"github.com/gvallee/go_util/pkg/util"
 )
 
+func checkResultBuildEnv(testEnv Info, expectedEnv Info, t *testing.T) {
+	if testEnv.SrcDir != expectedEnv.SrcDir {
+		t.Fatalf("source dir has not been properly set; SrcDir is %s instead of %s", testEnv.SrcDir, expectedEnv.SrcDir)
+	}
+	if testEnv.SrcPath != expectedEnv.SrcPath {
+		t.Fatalf("source path has not been properly set; SrcPath is %s instead of %s)", testEnv.SrcPath, expectedEnv.SrcPath)
+	}
+
+}
+
 func TestDirURLGet(t *testing.T) {
 	var testEnv Info
 	var appInfo app.Info
@@ -44,15 +54,16 @@ func TestDirURLGet(t *testing.T) {
 		t.Fatalf("Get() failed: %s", err)
 	}
 
-	expectedDir := filepath.Join(testEnv.BuildDir, appInfo.Name, filepath.Base(dir1))
-	expectedFile := filepath.Join(expectedDir, filepath.Base(tempFile.Name()))
+	var expectedEnv Info
+	expectedEnv.SrcDir = filepath.Join(testEnv.BuildDir, appInfo.Name, filepath.Base(dir1))
+	expectedEnv.SrcPath = expectedEnv.SrcDir
+
+	expectedFile := filepath.Join(expectedEnv.SrcDir, filepath.Base(tempFile.Name()))
 	if !util.FileExists(expectedFile) {
 		t.Fatalf("expected file %s does not exist", expectedFile)
 	}
-	
-	if testEnv.SrcPath != expectedDir {
-		t.Fatalf("source path has not been properly set (%s instead of %s)", testEnv.SrcPath, expectedDir)
-	}
+
+	checkResultBuildEnv(testEnv, expectedEnv, t)
 }
 
 func TestFileURLGet(t *testing.T) {
@@ -63,7 +74,7 @@ func TestFileURLGet(t *testing.T) {
 
 	var testEnv Info
 	var err error
-	testEnv.SrcDir, err = ioutil.TempDir("", "")
+	testEnv.BuildDir, err = ioutil.TempDir("", "")
 	if err != nil {
 		t.Fatalf("unable to create temporary directory: %s", err)
 	}
@@ -74,12 +85,12 @@ func TestFileURLGet(t *testing.T) {
 		t.Fatalf("unable to download %s: %s", a.URL, err)
 	}
 
-	expectedFile := filepath.Join(testEnv.SrcDir, a.Name, filepath.Base(a.URL))
-	if !util.FileExists(expectedFile) {
-		t.Fatalf("expected file %s does not exist", expectedFile)
+	var expectedEnv Info
+	expectedEnv.SrcDir = filepath.Join(testEnv.BuildDir, a.Name)
+	expectedEnv.SrcPath = filepath.Join(expectedEnv.SrcDir, filepath.Base(a.URL))
+	if !util.FileExists(expectedEnv.SrcPath) {
+		t.Fatalf("expected file %s does not exist", expectedEnv.SrcPath)
 	}
 
-	if testEnv.SrcPath != expectedFile {
-		t.Fatalf("source path has not been properly set (%s instead of %s)", testEnv.SrcPath, expectedFile)
-	}
+	checkResultBuildEnv(testEnv, expectedEnv, t)
 }
