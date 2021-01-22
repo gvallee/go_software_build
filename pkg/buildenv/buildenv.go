@@ -256,6 +256,7 @@ func (env *Info) Get(p *app.Info) error {
 			if err != nil {
 				return fmt.Errorf("unable to copy %s into %s: %s", path, env.BuildDir, err)
 			}
+			env.SrcPath = filepath.Join(env.BuildDir, filepath.Base(path))
 		}
 	case util.HttpURL:
 		err := env.download(p)

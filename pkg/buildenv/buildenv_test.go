@@ -44,8 +44,13 @@ func TestGet(t *testing.T) {
 		t.Fatalf("Get() failed: %s", err)
 	}
 
-	expectedFile := filepath.Join(testEnv.BuildDir, filepath.Base(dir1), filepath.Base(tempFile.Name()))
+	expectedDir := filepath.Join(testEnv.BuildDir, filepath.Base(dir1))
+	expectedFile := filepath.Join(expectedDir, filepath.Base(tempFile.Name()))
 	if !util.FileExists(expectedFile) {
 		t.Fatalf("expected file %s does not exist", expectedFile)
+	}
+	
+	if testEnv.SrcPath != expectedDir {
+		t.Fatalf("source path has not been properly set (%s instead of %s)", testEnv.SrcPath, expectedDir)
 	}
 }
