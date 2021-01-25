@@ -8,6 +8,7 @@ package autotools
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 	"path/filepath"
 	"strings"
@@ -18,6 +19,9 @@ import (
 
 // Config represents the configuration of the autotools-compliant software to configure/compile/install
 type Config struct {
+	// DetectDone specifies whether Detect() has been called on the configuration
+	DetectDone bool
+
 	// Install is the path to the directory where the software should be installed
 	Install string
 
@@ -26,12 +30,20 @@ type Config struct {
 
 	// ExtraConfigureArgs is a set of string that are passed to configure
 	ExtraConfigureArgs []string
+
+	// HasAutogen specifies whether the package has a autogen.sh file
+	HasAutogen bool
+
+	// HasConfigure specifies whether the package has a configure file (true also if HadAutogen is true)
+	HasConfigure bool
+
+	// HasMakeInstall specifies whether the package as an install target in the Makefile
+	HasMakeInstall bool
 }
 
 func autogen(cfg *Config) error {
-	autogenPath := filepath.Join(cfg.Source, "autogen.sh")
-	if !util.FileExists(autogenPath) {
-		fmt.Printf("-> %s does not exist, skipping\n", autogenPath)
+	if !cfg.HasAutogen {
+		log.Println("-> no autogen.sh script, skipping")
 		return nil
 	}
 
@@ -48,17 +60,55 @@ func autogen(cfg *Config) error {
 	return nil
 }
 
+// MakefileHasTarget checks whether a specific Makefile includes a given target
+func (cfg *Config) MakefileHasTarget(target string, path string) bool {
+	content, err := ioutil.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	lines := strings.Split(string(content), "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, target+":") {
+			return true
+		}
+	}
+	return false
+}
+
+// Detect checks what is available from the package in terms of autotools and co.
+func (cfg *Config) Detect() {
+	autogenPath := filepath.Join(cfg.Source, "autogen.sh")
+	if util.FileExists(autogenPath) {
+		cfg.HasAutogen = true
+		cfg.HasConfigure = true
+		cfg.HasMakeInstall = true
+	}
+	configurePath := filepath.Join(cfg.Source, "configure")
+	if util.FileExists(configurePath) {
+		cfg.HasConfigure = true
+		cfg.HasMakeInstall = true
+	}
+	makefilePath := filepath.Join(cfg.Source, "Makefile")
+	if util.FileExists(makefilePath) {
+		cfg.HasMakeInstall = cfg.MakefileHasTarget("install", makefilePath)
+	}
+	cfg.DetectDone = true
+}
+
 // Configure handles the classic configure commands
-func Configure(cfg *Config) error {
+func (cfg *Config)Configure() error {
+	if !cfg.DetectDone {
+		cfg.Detect()
+	}
+
 	// First run autogen when necessary
 	err := autogen(cfg)
 	if err != nil {
 		return err
 	}
 
-	configurePath := filepath.Join(cfg.Source, "configure")
-	if !util.FileExists(configurePath) {
-		fmt.Printf("-> %s does not exist, skipping the configuration step\n", configurePath)
+	if !cfg.HasConfigure {
+		fmt.Printf("-> Package does not have configure script, skipping the configuration step\n")
 		return nil
 	}
 
@@ -71,6 +121,7 @@ func Configure(cfg *Config) error {
 		cmdArgs = append(cmdArgs, cfg.ExtraConfigureArgs...)
 	}
 
+	configurePath := filepath.Join(cfg.Install, "configure")
 	log.Printf("-> Running 'configure': %s %s\n", configurePath, cmdArgs)
 	var cmd advexec.Advcmd
 	cmd.BinPath = "./configure"

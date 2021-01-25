@@ -5,6 +5,8 @@
 
 package app
 
+import "github.com/gvallee/go_software_build/internal/pkg/autotools"
+
 // Info gathers information about a given application
 type Info struct {
 	// Name is the name of the application
@@ -30,4 +32,7 @@ type Info struct {
 
 	// Tarball is the name of the tarball of the application
 	Tarball string
+
+	// AutotoolsCfg is the autotools' configuration of the package, used to know how to configure, compile and install the software package
+	AutotoolsCfg autotools.Config
 }

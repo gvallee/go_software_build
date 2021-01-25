@@ -55,7 +55,7 @@ func GenericConfigure(env *buildenv.Info, appName string, extraArgs []string) er
 	var ac autotools.Config
 	ac.Install = filepath.Join(env.InstallDir, appName)
 	ac.Source = env.SrcDir
-	err := autotools.Configure(&ac)
+	err := ac.Configure()
 	if err != nil {
 		return fmt.Errorf("failed to configure software: %s", err)
 	}
@@ -109,22 +109,35 @@ func (b *Builder) install(pkg *app.Info, env *buildenv.Info) advexec.Result {
 		return res
 	}
 
-	targetDir := filepath.Join(env.InstallDir, pkg.Name)
-	if !util.PathExists(targetDir) {
-		err := os.Mkdir(targetDir, 0755)
+	if pkg.AutotoolsCfg.HasMakeInstall {
+		// The Makefile has a 'install' target so we just use it
+		targetDir := filepath.Join(env.InstallDir, pkg.Name)
+		if !util.PathExists(targetDir) {
+			err := os.Mkdir(targetDir, 0755)
+			if err != nil {
+				res.Err = err
+				return res
+			}
+		}
+
+		log.Printf("- Installing %s in %s...", pkg.Name, targetDir)
+		makefilePath, makeExtraArgs, err := findMakefile(env)
 		if err != nil {
-			res.Err = err
+			res.Err = fmt.Errorf("unable to find Makefile: %s", err)
+			return res
+		}
+		res.Err = env.RunMake(b.SudoRequired, "install", makefilePath, makeExtraArgs)
+	} else {
+		// Copy binaries and libraries to the install directory
+		var cmd advexec.Advcmd
+		cmd.BinPath = "cp"
+		cmd.CmdArgs = []string{"-rf", env.BuildDir, env.InstallDir}
+		res := cmd.Run()
+		if res.Err != nil {
 			return res
 		}
 	}
 
-	log.Printf("- Installing %s in %s...", pkg.Name, targetDir)
-	makefilePath, makeExtraArgs, err := findMakefile(env)
-	if err != nil {
-		res.Err = fmt.Errorf("unable to find Makefile: %s", err)
-		return res
-	}
-	res.Err = env.RunMake(b.SudoRequired, "install", makefilePath, makeExtraArgs)
 	return res
 }
 
@@ -161,6 +174,8 @@ func (b *Builder) Install() advexec.Result {
 		return res
 	}
 
+	b.App.AutotoolsCfg.Detect()
+
 	// Right now, we assume we do not have to install autotools, which is a bad assumption
 	var extraArgs []string
 	if b.GetConfigureExtraArgs != nil {
@@ -174,7 +189,7 @@ func (b *Builder) Install() advexec.Result {
 
 	res = b.compile(&b.App, &b.Env)
 	if res.Err != nil {
-		res.Stderr = fmt.Sprintf("failed to compile %s: %s", b.App, res.Err)
+		res.Stderr = fmt.Sprintf("failed to compile %s: %s", b.App.Name, res.Err)
 		return res
 	}
 
@@ -230,7 +245,7 @@ func (b *Builder) Load(persistent bool) error {
 	if b.Env.InstallDir == "" {
 		return fmt.Errorf("install directory is undefined")
 	}
-	
+
 	return nil
 }
 
