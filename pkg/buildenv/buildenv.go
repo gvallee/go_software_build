@@ -270,21 +270,27 @@ func (env *Info) Get(p *app.Info) error {
 		} else {
 			targetDir := filepath.Join(env.BuildDir, p.Name)
 			if !util.PathExists(targetDir) {
-				err := os.Mkdir(targetDir, 0755)
+				err := os.MkdirAll(targetDir, 0755)
 				if err != nil {
 					return err
 				}
 			}
-			targetDir = filepath.Join(targetDir, filepath.Base(path))
-			cmd := exec.Command("cp", "-rf", filepath.Join(path, "*"), targetDir)
-			cmd.Dir = env.BuildDir
-			err := cmd.Run()
+			var cmd advexec.Advcmd
+			var err error
+			cmd.BinPath, err = exec.LookPath("cp")
 			if err != nil {
-				return fmt.Errorf("unable to copy %s into %s: %s", path, targetDir, err)
+				return fmt.Errorf("cp command not available")
+			}
+			cmd.CmdArgs = append(cmd.CmdArgs, "-rf")
+			cmd.CmdArgs = append(cmd.CmdArgs, path)
+			cmd.CmdArgs = append(cmd.CmdArgs, targetDir)
+			res := cmd.Run()
+			if res.Err != nil {
+				return fmt.Errorf("unable to copy %s into %s: %s, stdout: %s, stderr: %s", path, targetDir, res.Err, res.Stdout, res.Stderr)
 			}
 
-			env.SrcPath = targetDir
-			env.SrcDir = targetDir
+			env.SrcPath = filepath.Join(targetDir, filepath.Base(p.URL))
+			env.SrcDir = env.SrcPath
 		}
 	case util.HttpURL:
 		err := env.download(p)

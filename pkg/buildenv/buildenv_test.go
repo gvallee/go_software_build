@@ -36,7 +36,7 @@ func TestDirURLGet(t *testing.T) {
 	}
 	defer os.RemoveAll(dir1)
 	appInfo.Name = "testApp"
-	appInfo.URL = "file://"+dir1
+	appInfo.URL = "file://" + dir1
 
 	tempFile, err := ioutil.TempFile(dir1, "")
 	if err != nil {
@@ -49,7 +49,7 @@ func TestDirURLGet(t *testing.T) {
 	}
 	defer os.RemoveAll(testEnv.BuildDir)
 
-	err = testEnv.Get(&appInfo) 
+	err = testEnv.Get(&appInfo)
 	if err != nil {
 		t.Fatalf("Get() failed: %s", err)
 	}
@@ -64,6 +64,12 @@ func TestDirURLGet(t *testing.T) {
 	}
 
 	checkResultBuildEnv(testEnv, expectedEnv, t)
+
+	// We are supposed to be able to run twice in the row
+	err = testEnv.Get(&appInfo)
+	if err != nil {
+		t.Fatalf("Get() failed: %s", err)
+	}
 }
 
 func TestFileURLGet(t *testing.T) {
