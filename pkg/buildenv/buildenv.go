@@ -269,17 +269,20 @@ func (env *Info) Get(p *app.Info) error {
 			}
 		} else {
 			targetDir := filepath.Join(env.BuildDir, p.Name)
-			err := os.Mkdir(targetDir, 0755)
-			if err != nil {
-				return err
+			if !util.PathExists(targetDir) {
+				err := os.Mkdir(targetDir, 0755)
+				if err != nil {
+					return err
+				}
 			}
 			targetDir = filepath.Join(targetDir, filepath.Base(path))
-			cmd := exec.Command("cp", "-r", path, targetDir)
+			cmd := exec.Command("cp", "-rf", path, targetDir)
 			cmd.Dir = env.BuildDir
-			err = cmd.Run()
+			err := cmd.Run()
 			if err != nil {
 				return fmt.Errorf("unable to copy %s into %s: %s", path, env.BuildDir, err)
 			}
+
 			env.SrcPath = targetDir
 			env.SrcDir = targetDir
 		}
