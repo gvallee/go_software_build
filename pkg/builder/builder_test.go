@@ -71,6 +71,30 @@ func TestInstallFromAutotoolsRelease(t *testing.T) {
 
 }
 
+func TestBuilderEnv(t *testing.T) {
+	b := setBuilder(t)
+	t.Logf("Build directory: %s", b.Env.BuildDir)
+	t.Logf("Source directory: %s", b.Env.SrcDir)
+	b.App.Name = "helloworld"
+	b.App.URL = "https://github.com/gvallee/c_hello_world/archive/1.0.0.tar.gz"
+	b.App.Version = "1.0.0"
+	b.Env.Env = append(b.Env.Env, "CC=/dummy/toto")
+
+	err := b.Load(false)
+	if err != nil {
+		t.Fatalf("unable to load the builder: %s", err)
+	}
+
+	if b.Configure == nil {
+		t.Fatalf("builder configure is undefined")
+	}
+
+	res := b.Install()
+	if res.Err == nil {
+		t.Fatalf("install succeeded even when specifying an invalid C compiler through the environment")
+	}
+}
+
 func TestInstallFromSource(t *testing.T) {
 	b := setBuilder(t)
 	t.Logf("Build directory: %s", b.Env.BuildDir)

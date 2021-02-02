@@ -31,6 +31,9 @@ type Config struct {
 	// ExtraConfigureArgs is a set of string that are passed to configure
 	ExtraConfigureArgs []string
 
+	// ConfigureEnv is the environment to use when running configure
+	ConfigureEnv []string
+
 	// HasAutogen specifies whether the package has a autogen.sh file
 	HasAutogen bool
 
@@ -147,6 +150,7 @@ func (cfg *Config) Configure() error {
 		cmd.CmdArgs = cmdArgs
 	}
 	cmd.ExecDir = cfg.Source
+	cmd.Env = append(cmd.Env, cfg.ConfigureEnv...)
 	res := cmd.Run()
 	if res.Err != nil {
 		return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", res.Err, res.Stdout, res.Stderr)

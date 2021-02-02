@@ -55,6 +55,7 @@ func GenericConfigure(env *buildenv.Info, appName string, extraArgs []string) er
 	var ac autotools.Config
 	ac.Install = filepath.Join(env.InstallDir, appName)
 	ac.Source = env.SrcDir
+	ac.ConfigureEnv = env.Env
 	err := ac.Configure()
 	if err != nil {
 		return fmt.Errorf("failed to configure software: %s", err)
