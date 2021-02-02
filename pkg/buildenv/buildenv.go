@@ -53,6 +53,9 @@ type Info struct {
 
 	// Env is the environment to use with the build environment
 	Env []string
+
+	// MakeExtraArgs is the extra arguments to use when running make
+	MakeExtraArgs []string
 }
 
 // Unpack extracts the source code from a package/tarball/zip file.
@@ -155,7 +158,8 @@ func (env *Info) RunMake(sudo bool, stage string, makefilePath string, args []st
 		args = append([]string{"make"}, args...)
 		makeCmd.BinPath = sudoBin
 	}
-	makeCmd.CmdArgs = args
+	makeCmd.CmdArgs = append(makeCmd.CmdArgs, args...)
+	makeCmd.CmdArgs = append(makeCmd.CmdArgs, env.MakeExtraArgs...)
 	log.Printf("* Executing (from %s): %s", env.SrcDir, logMsg)
 	if len(env.Env) > 0 {
 		makeCmd.Env = env.Env

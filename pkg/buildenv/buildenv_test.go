@@ -72,24 +72,30 @@ func TestDirURLGet(t *testing.T) {
 	}
 }
 
-func TestFileURLGet(t *testing.T) {
-	var a app.Info
+func getHelloWorldSrc(t *testing.T) (*Info, *app.Info) {
+	a := new(app.Info)
 	a.Name = "helloworld"
 	a.URL = "https://github.com/gvallee/c_hello_world/archive/1.0.0.tar.gz"
 	a.Version = "1.0.0"
 
-	var testEnv Info
+	testEnv := new(Info)
 	var err error
 	testEnv.BuildDir, err = ioutil.TempDir("", "")
 	if err != nil {
 		t.Fatalf("unable to create temporary directory: %s", err)
 	}
-	defer os.RemoveAll(testEnv.BuildDir)
 
-	err = testEnv.Get(&a)
+	err = testEnv.Get(a)
 	if err != nil {
 		t.Fatalf("unable to download %s: %s", a.URL, err)
 	}
+
+	return testEnv, a
+}
+
+func TestFileURLGet(t *testing.T) {
+	testEnv, a := getHelloWorldSrc(t)
+	defer os.RemoveAll(testEnv.BuildDir)
 
 	var expectedEnv Info
 	expectedEnv.SrcDir = filepath.Join(testEnv.BuildDir, a.Name)
@@ -98,5 +104,18 @@ func TestFileURLGet(t *testing.T) {
 		t.Fatalf("expected file %s does not exist", expectedEnv.SrcPath)
 	}
 
-	checkResultBuildEnv(testEnv, expectedEnv, t)
+	checkResultBuildEnv(*testEnv, expectedEnv, t)
+}
+
+func TestMakeExtraArgs(t *testing.T) {
+	testEnv, _ := getHelloWorldSrc(t)
+	defer os.RemoveAll(testEnv.BuildDir)
+
+	testEnv.MakeExtraArgs = append(testEnv.MakeExtraArgs, "CC=dummy")
+	makefilePath := filepath.Join(testEnv.SrcDir, "Makefile")
+	err := testEnv.RunMake(false, "", makefilePath, nil)
+	if err == nil {
+		t.Fatalf("test succeeded while expected to fail")
+	}
+
 }
