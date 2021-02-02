@@ -276,7 +276,7 @@ func (env *Info) Get(p *app.Info) error {
 				}
 			}
 			targetDir = filepath.Join(targetDir, filepath.Base(path))
-			cmd := exec.Command("cp", "-rf", path, targetDir)
+			cmd := exec.Command("cp", "-rf", filepath.Join(path, "*"), targetDir)
 			cmd.Dir = env.BuildDir
 			err := cmd.Run()
 			if err != nil {
