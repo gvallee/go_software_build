@@ -280,7 +280,7 @@ func (env *Info) Get(p *app.Info) error {
 			cmd.Dir = env.BuildDir
 			err := cmd.Run()
 			if err != nil {
-				return fmt.Errorf("unable to copy %s into %s: %s", path, env.BuildDir, err)
+				return fmt.Errorf("unable to copy %s into %s: %s", path, targetDir, err)
 			}
 
 			env.SrcPath = targetDir
