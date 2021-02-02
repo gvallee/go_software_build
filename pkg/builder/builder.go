@@ -89,6 +89,7 @@ func (b *Builder) compile(pkg *app.Info, env *buildenv.Info) advexec.Result {
 		return res
 	}
 
+	pkg.AutotoolsCfg.Detect()
 	makefilePath, makeExtraArgs, err := findMakefile(env)
 	if err != nil {
 		fmt.Printf("-> No Makefile, trying to figure out how to compile/install %s...", pkg.Name)
@@ -109,6 +110,7 @@ func (b *Builder) install(pkg *app.Info, env *buildenv.Info) advexec.Result {
 		return res
 	}
 
+	pkg.AutotoolsCfg.Detect()
 	if pkg.AutotoolsCfg.HasMakeInstall {
 		// The Makefile has a 'install' target so we just use it
 		targetDir := filepath.Join(env.InstallDir, pkg.Name)
@@ -176,7 +178,6 @@ func (b *Builder) Install() advexec.Result {
 	}
 
 	b.App.AutotoolsCfg.Source = b.Env.SrcDir
-	b.App.AutotoolsCfg.Detect()
 
 	// Right now, we assume we do not have to install autotools, which is a bad assumption
 	var extraArgs []string

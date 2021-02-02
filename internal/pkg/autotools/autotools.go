@@ -77,6 +77,9 @@ func (cfg *Config) MakefileHasTarget(target string, path string) bool {
 
 // Detect checks what is available from the package in terms of autotools and co.
 func (cfg *Config) Detect() {
+	if cfg.DetectDone {
+		return
+	}
 	autogenPath := filepath.Join(cfg.Source, "autogen.sh")
 	log.Printf("Checking for %s", autogenPath)
 	if util.FileExists(autogenPath) {
@@ -84,36 +87,34 @@ func (cfg *Config) Detect() {
 		cfg.HasAutogen = true
 		cfg.HasConfigure = true
 		cfg.HasMakeInstall = true
-		return
-	}
-	log.Printf("... not available")
+	} else {
+		log.Printf("... not available")
 
-	configurePath := filepath.Join(cfg.Source, "configure")
-	log.Printf("checking for %s... ", configurePath)
-	if util.FileExists(configurePath) {
-		log.Println("... ok")
-		cfg.HasConfigure = true
-		cfg.HasMakeInstall = true
-		return
-	}
-	log.Println("... not available")
+		configurePath := filepath.Join(cfg.Source, "configure")
+		log.Printf("checking for %s... ", configurePath)
+		if util.FileExists(configurePath) {
+			log.Println("... ok")
+			cfg.HasConfigure = true
+			cfg.HasMakeInstall = true
+		} else {
+			log.Println("... not available")
 
-	makefilePath := filepath.Join(cfg.Source, "Makefile")
-	log.Printf("checking for %s... ", makefilePath)
-	if util.FileExists(makefilePath) {
-		log.Printf("... ok")
-		cfg.HasMakeInstall = cfg.MakefileHasTarget("install", makefilePath)
+			makefilePath := filepath.Join(cfg.Source, "Makefile")
+			log.Printf("checking for %s... ", makefilePath)
+			if util.FileExists(makefilePath) {
+				log.Printf("... ok")
+				cfg.HasMakeInstall = cfg.MakefileHasTarget("install", makefilePath)
+			} else {
+				log.Printf("... not available")
+			}
+		}
 	}
-	log.Printf("... not available")
-
 	cfg.DetectDone = true
 }
 
 // Configure handles the classic configure commands
 func (cfg *Config) Configure() error {
-	if !cfg.DetectDone {
-		cfg.Detect()
-	}
+	cfg.Detect()
 
 	// First run autogen when necessary
 	err := autogen(cfg)
@@ -135,7 +136,7 @@ func (cfg *Config) Configure() error {
 		cmdArgs = append(cmdArgs, cfg.ExtraConfigureArgs...)
 	}
 
-	configurePath := filepath.Join(cfg.Install, "configure")
+	configurePath := filepath.Join(cfg.Source, "configure")
 	log.Printf("-> Running 'configure': %s %s\n", configurePath, cmdArgs)
 	var cmd advexec.Advcmd
 	cmd.BinPath = "./configure"
