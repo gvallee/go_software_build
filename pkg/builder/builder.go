@@ -120,7 +120,7 @@ func (b *Builder) install(pkg *app.Info, env *buildenv.Info) advexec.Result {
 			}
 		}
 
-		log.Printf("- Installing %s in %s...", pkg.Name, targetDir)
+		log.Printf("- Installing %s in %s using 'make install'...", pkg.Name, targetDir)
 		makefilePath, makeExtraArgs, err := findMakefile(env)
 		if err != nil {
 			res.Err = fmt.Errorf("unable to find Makefile: %s", err)
@@ -129,6 +129,7 @@ func (b *Builder) install(pkg *app.Info, env *buildenv.Info) advexec.Result {
 		res.Err = env.RunMake(b.SudoRequired, "install", makefilePath, makeExtraArgs)
 	} else {
 		// Copy binaries and libraries to the install directory
+		log.Printf("- 'make install' not available, copying files...")
 		var cmd advexec.Advcmd
 		cmd.BinPath = "cp"
 		cmd.CmdArgs = []string{"-rf", env.BuildDir, env.InstallDir}
@@ -174,6 +175,7 @@ func (b *Builder) Install() advexec.Result {
 		return res
 	}
 
+	b.App.AutotoolsCfg.Source = b.Env.SrcDir
 	b.App.AutotoolsCfg.Detect()
 
 	// Right now, we assume we do not have to install autotools, which is a bad assumption

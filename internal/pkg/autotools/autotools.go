@@ -78,25 +78,39 @@ func (cfg *Config) MakefileHasTarget(target string, path string) bool {
 // Detect checks what is available from the package in terms of autotools and co.
 func (cfg *Config) Detect() {
 	autogenPath := filepath.Join(cfg.Source, "autogen.sh")
+	log.Printf("Checking for %s", autogenPath)
 	if util.FileExists(autogenPath) {
+		log.Println("... ok")
 		cfg.HasAutogen = true
 		cfg.HasConfigure = true
 		cfg.HasMakeInstall = true
+		return
 	}
+	log.Printf("... not available")
+
 	configurePath := filepath.Join(cfg.Source, "configure")
+	log.Printf("checking for %s... ", configurePath)
 	if util.FileExists(configurePath) {
+		log.Println("... ok")
 		cfg.HasConfigure = true
 		cfg.HasMakeInstall = true
+		return
 	}
+	log.Println("... not available")
+
 	makefilePath := filepath.Join(cfg.Source, "Makefile")
+	log.Printf("checking for %s... ", makefilePath)
 	if util.FileExists(makefilePath) {
+		log.Printf("... ok")
 		cfg.HasMakeInstall = cfg.MakefileHasTarget("install", makefilePath)
 	}
+	log.Printf("... not available")
+
 	cfg.DetectDone = true
 }
 
 // Configure handles the classic configure commands
-func (cfg *Config)Configure() error {
+func (cfg *Config) Configure() error {
 	if !cfg.DetectDone {
 		cfg.Detect()
 	}
