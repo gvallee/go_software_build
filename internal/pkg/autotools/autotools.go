@@ -126,7 +126,7 @@ func (cfg *Config) Configure() error {
 	}
 
 	if !cfg.HasConfigure {
-		fmt.Printf("-> Package does not have configure script, skipping the configuration step\n")
+		log.Printf("-> Package does not have configure script, skipping the configuration step\n")
 		return nil
 	}
 
