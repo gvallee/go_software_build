@@ -65,6 +65,7 @@ func TestInstallFromAutotoolsRelease(t *testing.T) {
 	}
 
 	expectedBinary := filepath.Join(b.Env.InstallDir, b.App.Name, "bin", "helloworld")
+	t.Logf("Checking if %s was correctly installed,,,", expectedBinary)
 	if !util.FileExists(expectedBinary) {
 		t.Fatalf("expected binary %s does not exist", expectedBinary)
 	}
@@ -118,6 +119,7 @@ func TestInstallFromSource(t *testing.T) {
 	}
 
 	expectedBinary := filepath.Join(b.Env.InstallDir, b.App.Name, "bin", "helloworld")
+	t.Logf("Checking if %s was correctly installed,,,", expectedBinary)
 	if !util.FileExists(expectedBinary) {
 		t.Fatalf("expected binary %s does not exist", expectedBinary)
 	}

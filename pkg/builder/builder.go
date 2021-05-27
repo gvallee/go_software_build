@@ -134,7 +134,7 @@ func (b *Builder) install(pkg *app.Info, env *buildenv.Info) advexec.Result {
 		log.Printf("- 'make install' not available, copying files...")
 		var cmd advexec.Advcmd
 		cmd.BinPath = "cp"
-		cmd.CmdArgs = []string{"-rf", env.BuildDir, env.InstallDir}
+		cmd.CmdArgs = []string{"-rf", env.GetAppBuildDir(pkg), env.InstallDir}
 		res := cmd.Run()
 		if res.Err != nil {
 			return res
@@ -155,12 +155,20 @@ func (b *Builder) Install() advexec.Result {
 	}
 
 	log.Printf("Installing %s on host...", b.App.Name)
-	if b.Persistent != "" && util.PathExists(b.Env.InstallDir) {
-		log.Printf("* %s already exists, skipping installation...", b.Env.InstallDir)
+	appInstallDir := b.Env.GetAppInstallDir(&b.App)
+	if b.Persistent != "" {
+		if b.Env.InstallDir != b.Persistent {
+			log.Printf("* Updating install directory from %s default to %s\n", b.Env.InstallDir, b.Persistent)
+			b.Env.InstallDir = b.Persistent
+		}
+		appInstallDir = b.Env.GetAppInstallDir(&b.App)
+	}
+	if util.PathExists(appInstallDir) {
+		log.Printf("* %s already exists, skipping installation...", appInstallDir)
 		return res
 	}
 
-	log.Printf("* %s does not exists, installing from scratch\n", b.Env.InstallDir)
+	log.Printf("* %s does not exists, installing from scratch\n", appInstallDir)
 	res.Err = b.Env.Get(&b.App)
 	if res.Err != nil {
 		res.Err = fmt.Errorf("failed to download software from %s: %s", b.App.URL, res.Err)
@@ -231,11 +239,11 @@ func (b *Builder) Load(persistent bool) error {
 	b.Configure = GenericConfigure
 
 	if b.App.Name == "" {
-		return fmt.Errorf("Application's name is undefined")
+		return fmt.Errorf("application's name is undefined")
 	}
 
 	if b.App.URL == "" {
-		return fmt.Errorf("URL to download application is undefined")
+		return fmt.Errorf("the URL to download application is undefined")
 	}
 
 	if b.Env.ScratchDir == "" {

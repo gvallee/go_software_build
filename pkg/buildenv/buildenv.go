@@ -356,28 +356,71 @@ func (env *Info) download(p *app.Info) error {
 	return nil
 }
 
-// IsInstalled checks whether a specific software package is already installed in a specific build environment
-func (env *Info) IsInstalled(p *app.Info) bool {
-	switch util.DetectURLType(p.URL) {
+func getNameFromFilename(filename string) string {
+	format := util.DetectTarballFormat(filename)
+	if format == util.FormatBZ2 {
+		filename = strings.TrimSuffix(filename, "."+util.FormatBZ2)
+		format = util.DetectTarballFormat(filename)
+	}
+	if format == util.FormatGZ {
+		filename = strings.TrimSuffix(filename, "."+util.FormatGZ)
+		format = util.DetectTarballFormat(filename)
+	}
+	if format == util.FormatTGZ {
+		filename = strings.TrimSuffix(filename, "."+util.FormatTGZ)
+		format = util.DetectTarballFormat(filename)
+	}
+	if format == util.FormatTAR {
+		filename = strings.TrimSuffix(filename, "."+util.FormatTAR)
+	}
+	return filename
+}
+
+func (env *Info) getAppInstallDirFromURL(a *app.Info) string {
+	switch util.DetectURLType(a.URL) {
 	case util.FileURL:
-		filename := path.Base(p.URL)
-		filePathInBuildDir := filepath.Join(env.BuildDir, filename)
-		filePathInInstallDir := filepath.Join(env.InstallDir, filename)
-		return util.FileExists(filePathInBuildDir) || util.FileExists(filePathInInstallDir)
+		filename := path.Base(a.URL)
+		filename = getNameFromFilename(filename)
+		return filepath.Join(env.InstallDir, filename)
 	case util.HttpURL:
 		// todo: do not assume that a package downloaded from the web is always a tarball
-		filename := path.Base(p.URL)
-		filePath := filepath.Join(env.BuildDir, filename)
-		log.Printf("* Checking whether %s exists...\n", filePath)
-		return util.FileExists(filePath)
+		filename := path.Base(a.URL)
+		filename = getNameFromFilename(filename)
+		return filepath.Join(env.InstallDir, filename)
 	case util.GitURL:
-		dirname := path.Base(p.URL)
+		dirname := path.Base(a.URL)
 		dirname = strings.Replace(dirname, ".git", "", -1)
-		path := filepath.Join(env.BuildDir, dirname)
-		return util.PathExists(path)
+		return filepath.Join(env.InstallDir, dirname)
 	}
 
-	return false
+	return ""
+}
+
+func (env *Info) getTargetDir(basedir string, a *app.Info) string {
+	if a.Name != "" {
+		return filepath.Join(basedir, a.Name)
+	}
+	if a.URL != "" {
+		return env.getAppInstallDirFromURL(a)
+	}
+	return ""
+
+}
+
+// GetAppInstallDir returns the full path where a specific application is to be installed
+func (env *Info) GetAppInstallDir(a *app.Info) string {
+	return env.getTargetDir(env.InstallDir, a)
+}
+
+// GetAppBuildDir returns the full path where a specific application is to be installed
+func (env *Info) GetAppBuildDir(a *app.Info) string {
+	return env.getTargetDir(env.BuildDir, a)
+}
+
+// IsInstalled checks whether a specific software package is already installed in a specific build environment
+func (env *Info) IsInstalled(p *app.Info) bool {
+	installDir := env.GetAppInstallDir(p)
+	return util.PathExists(installDir)
 }
 
 // GetEnvPath returns the string representing the value for the PATH environment
