@@ -56,6 +56,7 @@ func GenericConfigure(env *buildenv.Info, appName string, extraArgs []string) er
 	ac.Install = filepath.Join(env.InstallDir, appName)
 	ac.Source = env.SrcDir
 	ac.ConfigureEnv = env.Env
+	ac.ExtraConfigureArgs = extraArgs
 	err := ac.Configure()
 	if err != nil {
 		return fmt.Errorf("failed to configure software: %s", err)
@@ -169,6 +170,7 @@ func (b *Builder) Install() advexec.Result {
 	}
 
 	log.Printf("* %s does not exists, installing from scratch\n", appInstallDir)
+
 	res.Err = b.Env.Get(&b.App)
 	if res.Err != nil {
 		res.Err = fmt.Errorf("failed to download software from %s: %s", b.App.URL, res.Err)
@@ -179,7 +181,7 @@ func (b *Builder) Install() advexec.Result {
 		return res
 	}
 
-	res.Err = b.Env.Unpack()
+	res.Err = b.Env.Unpack(&b.App)
 	if res.Err != nil {
 		res.Err = fmt.Errorf("failed to unpack %s: %s", b.App.Name, res.Err)
 		return res
@@ -293,7 +295,7 @@ func (b *Builder) Compile() error {
 	}
 
 	// Unpacking the app
-	err = buildEnv.Unpack()
+	err = buildEnv.Unpack(&b.App)
 	if err != nil {
 		return fmt.Errorf("unable to unpack the application %s: %s", buildEnv.SrcPath, err)
 	}

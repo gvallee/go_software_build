@@ -86,7 +86,8 @@ func getHelloWorldSrc(t *testing.T) (*Info, *app.Info) {
 
 	testEnv := new(Info)
 	var err error
-	testEnv.BuildDir, err = ioutil.TempDir("", "")
+	// Create a temporary directory where files are downloaded
+	testEnv.SrcPath, err = ioutil.TempDir("", "")
 	if err != nil {
 		t.Fatalf("unable to create temporary directory: %s", err)
 	}
@@ -101,17 +102,14 @@ func getHelloWorldSrc(t *testing.T) (*Info, *app.Info) {
 
 func TestFileURLGet(t *testing.T) {
 	testEnv, a := getHelloWorldSrc(t)
-	defer os.RemoveAll(testEnv.BuildDir)
+	defer os.RemoveAll(testEnv.SrcPath)
 
 	var expectedEnv Info
-	expectedEnv.SrcDir = filepath.Join(testEnv.BuildDir, a.Name)
-	expectedEnv.SrcPath = filepath.Join(expectedEnv.SrcDir, filepath.Base(a.URL))
+	expectedEnv.SrcPath = filepath.Join(testEnv.SrcPath, filepath.Base(a.URL))
 	t.Logf("Checking if %s was correctly installed,,,", expectedEnv.SrcPath)
 	if !util.FileExists(expectedEnv.SrcPath) {
 		t.Fatalf("expected file %s does not exist", expectedEnv.SrcPath)
 	}
-
-	checkResultBuildEnv(*testEnv, expectedEnv, t)
 }
 
 func TestMakeExtraArgs(t *testing.T) {

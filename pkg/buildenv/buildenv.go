@@ -54,12 +54,15 @@ type Info struct {
 	// Env is the environment to use with the build environment
 	Env []string
 
+	// ConfigureExtraArgs is the extra arguments to use when running configure
+	ConfigureExtraArgs []string
+
 	// MakeExtraArgs is the extra arguments to use when running make
 	MakeExtraArgs []string
 }
 
 // Unpack extracts the source code from a package/tarball/zip file.
-func (env *Info) Unpack() error {
+func (env *Info) Unpack(appInfo *app.Info) error {
 	log.Println("- Unpacking software...")
 
 	// Sanity checks
@@ -67,18 +70,20 @@ func (env *Info) Unpack() error {
 		return fmt.Errorf("invalid parameter(s)")
 	}
 
-	// Figure out the extension of the tarball
-	if util.IsDir(env.SrcPath) {
-		// If we point to a directory, it is something like a Git checkout so nothing to do
-		log.Printf("%s does not seem to need to be unpacked (directory), skipping...", env.SrcPath)
-		return nil
-	}
+	srcObject := filepath.Join(env.SrcDir, appInfo.Tarball)
+	/*
+		if util.IsDir(env.SrcDir) {
+			// If we point to a directory, it is something like a Git checkout so nothing to do
+			log.Printf("%s does not seem to need to be unpacked (directory), skipping...", env.SrcPath)
+			return nil
+		}
+	*/
 
-	format := util.DetectTarballFormat(env.SrcPath)
+	// Figure out the extension of the tarball
+	format := util.DetectTarballFormat(srcObject)
 	if format == "" {
 		// A typical use case here is a single file that just needs to be compiled
-		log.Printf("%s does not seem to need to be unpacked (unsupported format?), skipping...", env.SrcPath)
-		env.SrcDir = env.BuildDir
+		log.Printf("%s does not seem to need to be unpacked (unsupported format?), skipping...", env.SrcDir)
 		return nil
 	}
 
@@ -94,10 +99,10 @@ func (env *Info) Unpack() error {
 		return fmt.Errorf("unsupported format: %s", format)
 	}
 
-	// Untar the package
-	log.Printf("-> Executing from %s: %s %s %s \n", env.SrcDir, tarPath, tarArg, env.SrcPath)
+	// Untar the package into the build directory
+	log.Printf("-> Executing from %s: %s %s %s \n", env.SrcDir, tarPath, tarArg, srcObject)
 	var stdout, stderr bytes.Buffer
-	cmd := exec.Command(tarPath, tarArg, env.SrcPath)
+	cmd := exec.Command(tarPath, tarArg, srcObject)
 	cmd.Dir = env.SrcDir
 	cmd.Stderr = &stderr
 	cmd.Stdout = &stdout
@@ -109,19 +114,18 @@ func (env *Info) Unpack() error {
 	// We save the directory created while untaring the tarball
 	entries, err := ioutil.ReadDir(env.SrcDir)
 	if err != nil {
-		return fmt.Errorf("failed to read directory %s: %s", env.BuildDir, err)
+		return fmt.Errorf("failed to read directory %s: %s", env.SrcDir, err)
 	}
-	if len(entries) != 2 {
+	// The source directory now has at most 2 entries: the tarball and the directory resulting from unpacking it
+	if len(entries) > 2 {
 		listDirs := ""
 		for _, e := range entries {
 			listDirs = e.Name() + ","
-			fmt.Printf("CHECKME: %s\n", e.Name())
 		}
-		return fmt.Errorf("inconsistent temporary %s directory, %d files instead of 1: %s", env.SrcDir, len(entries), listDirs)
+		return fmt.Errorf("inconsistent temporary %s directory, %d files instead of 1 or 2: %s", env.BuildDir, len(entries), listDirs)
 	}
-	// The source directory now has 2 entries: the tarball and the directory resulting from untaring it
 	for _, e := range entries {
-		if e.Name() != filepath.Base(env.SrcPath) {
+		if e.Name() != filepath.Base(appInfo.Tarball) {
 			env.SrcDir = filepath.Join(env.SrcDir, e.Name())
 			break
 		}
@@ -173,6 +177,7 @@ func (env *Info) RunMake(sudo bool, stage string, makefilePath string, args []st
 	return nil
 }
 
+// CopyTarball copies a tarball to a build directory
 func (env *Info) copyTarball(p *app.Info) error {
 	// Some sanity checks
 	if p.URL == "" {
@@ -184,14 +189,26 @@ func (env *Info) copyTarball(p *app.Info) error {
 		p.Tarball = path.Base(p.URL)
 	}
 
-	targetTarballPath := filepath.Join(env.BuildDir, p.Name, p.Tarball)
-	// The begining of the URL starts with 'file://' which we do not want
-	err := util.CopyFile(p.URL[7:], targetTarballPath)
-	if err != nil {
-		return fmt.Errorf("cannot copy file %s to %s: %s", p.URL, targetTarballPath, err)
+	targetDir := filepath.Join(env.BuildDir, p.Name)
+	if !util.PathExists(targetDir) {
+		err := os.MkdirAll(targetDir, defaultDirMode)
+		if err != nil {
+			return err
+		}
+	}
+	targetTarballPath := filepath.Join(targetDir, p.Tarball)
+
+	if util.FileExists(targetTarballPath) {
+		log.Printf("%s already exists, not copying", targetTarballPath)
+	} else {
+		// The begining of the URL starts with 'file://' which we do not want
+		err := util.CopyFile(p.URL[7:], targetTarballPath)
+		if err != nil {
+			return fmt.Errorf("cannot copy file %s to %s: %s", p.URL, targetTarballPath, err)
+		}
 	}
 
-	env.SrcPath = targetTarballPath
+	env.SrcDir = targetDir
 
 	return nil
 }
@@ -272,6 +289,8 @@ func (env *Info) Get(p *app.Info) error {
 				return fmt.Errorf("impossible to copy the tarball: %s", err)
 			}
 		} else {
+			// If we deal with a directory, we always copy it directly to the build directory because
+			// it is a pain to safely cache
 			targetDir := filepath.Join(env.BuildDir, p.Name)
 			if !util.PathExists(targetDir) {
 				err := os.MkdirAll(targetDir, 0755)
@@ -301,7 +320,11 @@ func (env *Info) Get(p *app.Info) error {
 		if err != nil {
 			return fmt.Errorf("impossible to download %s: %s", p.Name, err)
 		}
+		env.SrcDir = env.SrcPath
 	case util.GitURL:
+		// If we deal with a Git repository, we always clone it in the build directory because
+		// it is a pain to safely cache
+		env.SrcPath = env.BuildDir
 		err := env.gitCheckout(p)
 		if err != nil {
 			return fmt.Errorf("impossible to get Git repository %s: %s", p.URL, err)
@@ -315,22 +338,24 @@ func (env *Info) Get(p *app.Info) error {
 
 func (env *Info) download(p *app.Info) error {
 	// Sanity checks
-	if p.URL == "" || env.BuildDir == "" {
+	if p.URL == "" || env.SrcPath == "" {
 		return fmt.Errorf("invalid download() parameter(s)")
 	}
 
-	env.SrcDir = filepath.Join(env.BuildDir, p.Name)
-	if !util.PathExists(env.SrcDir) {
-		err := os.Mkdir(env.SrcDir, defaultDirMode)
+	if !util.PathExists(env.SrcPath) {
+		err := os.Mkdir(env.SrcPath, defaultDirMode)
 		if err != nil {
 			return err
 		}
 	}
-	targetFile := filepath.Join(env.SrcDir, filepath.Base(p.URL))
+	if p.Tarball == "" {
+		p.Tarball = filepath.Base(p.URL)
+	}
+	targetFile := filepath.Join(env.SrcPath, p.Tarball)
 	if util.FileExists(targetFile) {
 		log.Printf("- %s already exists, not downloading...", targetFile)
 	} else {
-		log.Printf("- Downloading %s from %s into %s...", p.Name, p.URL, env.SrcDir)
+		log.Printf("- Downloading %s from %s into %s...", p.Name, p.URL, env.SrcPath)
 
 		// todo: do not assume wget
 		binPath, err := exec.LookPath("wget")
@@ -338,10 +363,10 @@ func (env *Info) download(p *app.Info) error {
 			return fmt.Errorf("cannot find wget: %s", err)
 		}
 
-		log.Printf("* Executing from %s: %s %s", env.SrcDir, binPath, p.URL)
+		log.Printf("* Executing from %s: %s %s", env.SrcPath, binPath, p.URL)
 		var stdout, stderr bytes.Buffer
 		cmd := exec.Command(binPath, p.URL)
-		cmd.Dir = env.SrcDir
+		cmd.Dir = env.SrcPath
 		cmd.Stderr = &stderr
 		cmd.Stdout = &stdout
 		err = cmd.Run()
@@ -349,9 +374,6 @@ func (env *Info) download(p *app.Info) error {
 			return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
 		}
 	}
-
-	p.Tarball = filepath.Base(targetFile)
-	env.SrcPath = targetFile
 
 	return nil
 }
