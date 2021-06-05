@@ -201,4 +201,9 @@ func TestPersistentBuildFromLocalTarball(t *testing.T) {
 	if !util.FileExists(expectedBinary) {
 		t.Fatalf("expected binary %s does not exist", expectedBinary)
 	}
+
+	expectedTarball := filepath.Join(b.Env.BuildDir, b.App.Name, tarballFilename)
+	if b.Env.SrcPath != expectedTarball {
+		t.Fatalf("expected tarball is missing: %s instead of %s", b.Env.SrcPath, expectedTarball)
+	}
 }

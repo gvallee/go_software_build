@@ -209,6 +209,7 @@ func (env *Info) copyTarball(p *app.Info) error {
 	}
 
 	env.SrcDir = targetDir
+	env.SrcPath = targetTarballPath
 
 	return nil
 }

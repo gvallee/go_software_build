@@ -40,8 +40,8 @@ type Builder struct {
 	// Configure is the function to call to configure the software
 	Configure ConfigureFn
 
-	// GetConfigureExtraArgs is the function to call to get extra arguments for the configuration command
-	GetConfigureExtraArgs GetConfigureExtraArgsFn
+	// ConfigureExtraArgs is the extra arguments for the configuration command
+	ConfigureExtraArgs []string
 
 	// App is the application the builder is associated with
 	App app.Info
@@ -190,12 +190,7 @@ func (b *Builder) Install() advexec.Result {
 	b.App.AutotoolsCfg.Source = b.Env.SrcDir
 	b.App.AutotoolsCfg.Detect()
 
-	// Right now, we assume we do not have to install autotools, which is a bad assumption
-	var extraArgs []string
-	if b.GetConfigureExtraArgs != nil {
-		extraArgs = b.GetConfigureExtraArgs()
-	}
-	res.Err = b.Configure(&b.Env, b.App.Name, extraArgs)
+	res.Err = b.Configure(&b.Env, b.App.Name, b.ConfigureExtraArgs)
 	if res.Err != nil {
 		res.Err = fmt.Errorf("failed to configure %s: %s", b.App.Name, res.Err)
 		return res
