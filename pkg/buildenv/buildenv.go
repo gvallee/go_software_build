@@ -225,7 +225,7 @@ func (env *Info) gitCheckout(p *app.Info) error {
 	repoName = strings.Replace(repoName, ".git", "", 1)
 	targetDir := filepath.Join(env.BuildDir, p.Name)
 	if !util.PathExists(targetDir) {
-		err = os.Mkdir(targetDir, defaultDirMode)
+		err = os.MkdirAll(targetDir, defaultDirMode)
 		if err != nil {
 			return err
 		}
@@ -339,8 +339,12 @@ func (env *Info) Get(p *app.Info) error {
 
 func (env *Info) download(p *app.Info) error {
 	// Sanity checks
-	if p.URL == "" || env.SrcPath == "" {
-		return fmt.Errorf("invalid download() parameter(s)")
+	if p.URL == "" {
+		return fmt.Errorf("URL is undefined")
+	}
+
+	if env.SrcPath == "" {
+		return fmt.Errorf("SrcPath is undefined")
 	}
 
 	if !util.PathExists(env.SrcPath) {
