@@ -235,14 +235,6 @@ func (b *Builder) Load(persistent bool) error {
 	// so we should be able to do a autodetect instead of forcing autotools
 	b.Configure = GenericConfigure
 
-	if b.App.Name == "" {
-		return fmt.Errorf("application's name is undefined")
-	}
-
-	if b.App.URL == "" {
-		return fmt.Errorf("the URL to download application is undefined")
-	}
-
 	if b.Env.ScratchDir == "" {
 		return fmt.Errorf("scratch directory is undefined")
 	}
