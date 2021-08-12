@@ -166,6 +166,7 @@ func (env *Info) RunMake(sudo bool, stage string, makefilePath string, args []st
 	makeCmd.CmdArgs = append(makeCmd.CmdArgs, env.MakeExtraArgs...)
 	log.Printf("* Executing (from %s): %s", env.SrcDir, logMsg)
 	if len(env.Env) > 0 {
+		log.Printf("-> Using env: %s\n", env.Env)
 		makeCmd.Env = env.Env
 	}
 	makeCmd.ExecDir = filepath.Dir(makefilePath)

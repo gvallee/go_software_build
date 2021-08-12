@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 
 	"github.com/gvallee/go_exec/pkg/advexec"
@@ -48,6 +49,9 @@ type Builder struct {
 
 	// Env is the environment to build/install the software package
 	Env buildenv.Info
+
+	// BuildScript is the script to invoke to build the package
+	BuildScript string
 }
 
 // GenericConfigure is a generic function to configure a software, basically a wrapper around autotool's configure
@@ -84,8 +88,31 @@ func findMakefile(env *buildenv.Info) (string, []string, error) {
 
 func (b *Builder) compile(pkg *app.Info, env *buildenv.Info) advexec.Result {
 	var res advexec.Result
-
 	log.Printf("- Compiling %s...\n", pkg.Name)
+
+	if b.BuildScript != "" {
+		destFile := filepath.Join(env.SrcDir, path.Base(b.BuildScript))
+		if !util.FileExists(destFile) {
+			err := util.CopyFile(b.BuildScript, destFile)
+			if err != nil {
+				res.Err = err
+				return res
+			}
+			err = os.Chmod(destFile, 0777)
+			if err != nil {
+				res.Err = err
+				return res
+
+			}
+		}
+		log.Printf("-> Building with %s from %s\n", destFile, env.SrcDir)
+		var cmd advexec.Advcmd
+		cmd.BinPath = destFile
+		cmd.ExecDir = env.SrcDir
+		res = cmd.Run()
+		return res
+	}
+
 	if env.SrcDir == "" {
 		res.Err = fmt.Errorf("invalid parameter(s)")
 		return res
@@ -94,7 +121,7 @@ func (b *Builder) compile(pkg *app.Info, env *buildenv.Info) advexec.Result {
 	pkg.AutotoolsCfg.Detect()
 	makefilePath, makeExtraArgs, err := findMakefile(env)
 	if err != nil {
-		fmt.Printf("-> No Makefile, trying to figure out how to compile/install %s...", pkg.Name)
+		log.Printf("-> No Makefile, trying to figure out how to compile/install %s...", pkg.Name)
 		res.Err = fmt.Errorf("failed to figure out how to compile %s", pkg.Name)
 		return res
 	}
