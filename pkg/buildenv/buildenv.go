@@ -122,7 +122,7 @@ func (env *Info) Unpack(appInfo *app.Info) error {
 		for _, e := range entries {
 			listDirs = e.Name() + ","
 		}
-		return fmt.Errorf("inconsistent temporary %s directory, %d files instead of 1 or 2: %s", env.BuildDir, len(entries), listDirs)
+		return fmt.Errorf("inconsistent temporary %s directory, %d files instead of 1 or 2: %s", env.SrcDir, len(entries), listDirs)
 	}
 	for _, e := range entries {
 		if e.Name() != filepath.Base(appInfo.Tarball) {
