@@ -177,8 +177,12 @@ func (b *Builder) Install() advexec.Result {
 	var res advexec.Result
 
 	// Sanity checks
-	if b.Env.InstallDir == "" || b.App.URL == "" {
-		res.Err = fmt.Errorf("invalid parameter(s)")
+	if b.Env.InstallDir == "" {
+		res.Err = fmt.Errorf("undefined install directory")
+		return res
+	}
+	if b.App.URL == "" {
+		res.Err = fmt.Errorf("undefined application's URL")
 		return res
 	}
 
