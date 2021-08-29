@@ -54,6 +54,8 @@ type Builder struct {
 	BuildScript string
 }
 
+var makefileSpellings = []string{"Makefile", "makefile"}
+
 // GenericConfigure is a generic function to configure a software, basically a wrapper around autotool's configure
 func GenericConfigure(env *buildenv.Info, appName string, extraArgs []string) error {
 	var ac autotools.Config
@@ -71,16 +73,19 @@ func GenericConfigure(env *buildenv.Info, appName string, extraArgs []string) er
 
 func findMakefile(env *buildenv.Info) (string, []string, error) {
 	var makeExtraArgs []string
-	makefilePath := filepath.Join(env.SrcDir, "Makefile")
-	log.Printf("-> Checking for %s...", makefilePath)
-	if !util.FileExists(makefilePath) {
-		makefilePath := filepath.Join(env.SrcDir, "builddir", "Makefile")
-		if util.FileExists(makefilePath) {
-			makeExtraArgs = []string{"-C", "builddir"}
+
+	for _, makefileSpelling := range makefileSpellings {
+		makefilePath := filepath.Join(env.SrcDir, makefileSpelling)
+		log.Printf("-> Checking for %s...", makefilePath)
+		if !util.FileExists(makefilePath) {
+			makefilePath := filepath.Join(env.SrcDir, "builddir", "Makefile")
+			if util.FileExists(makefilePath) {
+				makeExtraArgs = []string{"-C", "builddir"}
+				return makefilePath, makeExtraArgs, nil
+			}
+		} else {
 			return makefilePath, makeExtraArgs, nil
 		}
-	} else {
-		return makefilePath, makeExtraArgs, nil
 	}
 
 	return "", nil, fmt.Errorf("unable to locate the Makefile")
