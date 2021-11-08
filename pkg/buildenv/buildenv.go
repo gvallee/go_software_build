@@ -66,8 +66,12 @@ func (env *Info) Unpack(appInfo *app.Info) error {
 	log.Println("- Unpacking software...")
 
 	// Sanity checks
-	if env.SrcPath == "" || env.BuildDir == "" {
-		return fmt.Errorf("invalid parameter(s)")
+	if env.SrcPath == "" {
+		return fmt.Errorf("env.SrcPath is undefined")
+	}
+
+	if env.BuildDir == "" {
+		return fmt.Errorf("env.BuildDir is undefined")
 	}
 
 	srcObject := filepath.Join(env.SrcDir, appInfo.Tarball)
@@ -91,7 +95,7 @@ func (env *Info) Unpack(appInfo *app.Info) error {
 	// (and it is a fair assumption for our current context)
 	tarPath, err := exec.LookPath("tar")
 	if err != nil {
-		return fmt.Errorf("tar is not available: %s", err)
+		return fmt.Errorf("tar is not available: %w", err)
 	}
 
 	tarArg := util.GetTarArgs(format)
@@ -108,13 +112,13 @@ func (env *Info) Unpack(appInfo *app.Info) error {
 	cmd.Stdout = &stdout
 	err = cmd.Run()
 	if err != nil {
-		return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
+		return fmt.Errorf("command failed: %w - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
 	}
 
 	// We save the directory created while untaring the tarball
 	entries, err := ioutil.ReadDir(env.SrcDir)
 	if err != nil {
-		return fmt.Errorf("failed to read directory %s: %s", env.SrcDir, err)
+		return fmt.Errorf("failed to read directory %s: %w", env.SrcDir, err)
 	}
 	// The source directory now has at most 2 entries: the tarball and the directory resulting from unpacking it
 	if len(entries) > 2 {
@@ -139,7 +143,7 @@ func (env *Info) Unpack(appInfo *app.Info) error {
 func (env *Info) RunMake(sudo bool, stage string, makefilePath string, args []string) error {
 	// Some sanity checks
 	if env.SrcDir == "" {
-		return fmt.Errorf("invalid parameter(s)")
+		return fmt.Errorf("env.SrcDir is undefined")
 	}
 
 	var makeCmd advexec.Advcmd
@@ -172,7 +176,7 @@ func (env *Info) RunMake(sudo bool, stage string, makefilePath string, args []st
 	makeCmd.ExecDir = filepath.Dir(makefilePath)
 	res := makeCmd.Run()
 	if res.Err != nil {
-		return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", res.Err, res.Stdout, res.Stderr)
+		return fmt.Errorf("command failed: %w - stdout: %s - stderr: %s", res.Err, res.Stdout, res.Stderr)
 	}
 
 	return nil
@@ -182,7 +186,7 @@ func (env *Info) RunMake(sudo bool, stage string, makefilePath string, args []st
 func (env *Info) copyTarball(p *app.Info) error {
 	// Some sanity checks
 	if p.URL == "" {
-		return fmt.Errorf("invalid copyTarball() parameter(s)")
+		return fmt.Errorf("p.URL is undefined")
 	}
 
 	// Figure out the name of the file if we do not already have it
@@ -205,7 +209,7 @@ func (env *Info) copyTarball(p *app.Info) error {
 		// The begining of the URL starts with 'file://' which we do not want
 		err := util.CopyFile(p.URL[7:], targetTarballPath)
 		if err != nil {
-			return fmt.Errorf("cannot copy file %s to %s: %s", p.URL, targetTarballPath, err)
+			return fmt.Errorf("cannot copy file %s to %s: %w", p.URL, targetTarballPath, err)
 		}
 	}
 
@@ -219,7 +223,7 @@ func (env *Info) gitCheckout(p *app.Info) error {
 	// todo: should it be cached in sysCfg and passed in?
 	gitBin, err := exec.LookPath("git")
 	if err != nil {
-		return fmt.Errorf("failed to find git: %s", err)
+		return fmt.Errorf("failed to find git: %w", err)
 	}
 
 	repoName := filepath.Base(p.URL)
@@ -242,7 +246,7 @@ func (env *Info) gitCheckout(p *app.Info) error {
 		gitCmd.Stdout = &stdout
 		err = gitCmd.Run()
 		if err != nil {
-			return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
+			return fmt.Errorf("command failed: %w - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
 		}
 
 	} else {
@@ -254,7 +258,7 @@ func (env *Info) gitCheckout(p *app.Info) error {
 		gitCmd.Stdout = &stdout
 		err = gitCmd.Run()
 		if err != nil {
-			return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
+			return fmt.Errorf("command failed: %w - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
 		}
 	}
 
@@ -273,7 +277,7 @@ func (env *Info) Get(p *app.Info) error {
 
 	// Sanity checks
 	if p.URL == "" {
-		return fmt.Errorf("invalid Get() parameter(s)")
+		return fmt.Errorf("p.URL is undefined")
 	}
 
 	// Detect the type of URL, e.g., file vs. http*
@@ -288,7 +292,7 @@ func (env *Info) Get(p *app.Info) error {
 		if !util.IsDir(path) {
 			err := env.copyTarball(p)
 			if err != nil {
-				return fmt.Errorf("impossible to copy the tarball: %s", err)
+				return fmt.Errorf("env.copyTarball() failed: %w", err)
 			}
 		} else {
 			// If we deal with a directory, we always copy it directly to the build directory because
@@ -311,7 +315,7 @@ func (env *Info) Get(p *app.Info) error {
 			cmd.CmdArgs = append(cmd.CmdArgs, targetDir)
 			res := cmd.Run()
 			if res.Err != nil {
-				return fmt.Errorf("unable to copy %s into %s: %s, stdout: %s, stderr: %s", path, targetDir, res.Err, res.Stdout, res.Stderr)
+				return fmt.Errorf("unable to copy %s into %s: %w, stdout: %s, stderr: %s", path, targetDir, res.Err, res.Stdout, res.Stderr)
 			}
 
 			env.SrcPath = filepath.Join(targetDir, filepath.Base(p.URL))
@@ -320,16 +324,15 @@ func (env *Info) Get(p *app.Info) error {
 	case util.HttpURL:
 		err := env.download(p)
 		if err != nil {
-			return fmt.Errorf("impossible to download %s: %s", p.Name, err)
+			return fmt.Errorf("env.download() failed, impossible to download %s: %w", p.Name, err)
 		}
-		env.SrcDir = env.SrcPath
 	case util.GitURL:
 		// If we deal with a Git repository, we always clone it in the build directory because
 		// it is a pain to safely cache
 		env.SrcPath = env.BuildDir
 		err := env.gitCheckout(p)
 		if err != nil {
-			return fmt.Errorf("impossible to get Git repository %s: %s", p.URL, err)
+			return fmt.Errorf("impossible to get Git repository %s: %w", p.URL, err)
 		}
 	default:
 		return fmt.Errorf("impossible to detect URL type: %s", p.URL)
@@ -341,15 +344,15 @@ func (env *Info) Get(p *app.Info) error {
 func (env *Info) download(p *app.Info) error {
 	// Sanity checks
 	if p.URL == "" {
-		return fmt.Errorf("URL is undefined")
+		return fmt.Errorf("p.URL is undefined")
 	}
 
-	if env.SrcPath == "" {
-		return fmt.Errorf("SrcPath is undefined")
+	if env.SrcDir == "" {
+		return fmt.Errorf("env.SrcPath is undefined")
 	}
 
-	if !util.PathExists(env.SrcPath) {
-		err := os.Mkdir(env.SrcPath, defaultDirMode)
+	if !util.PathExists(env.SrcDir) {
+		err := os.Mkdir(env.SrcDir, defaultDirMode)
 		if err != nil {
 			return err
 		}
@@ -357,11 +360,11 @@ func (env *Info) download(p *app.Info) error {
 	if p.Tarball == "" {
 		p.Tarball = filepath.Base(p.URL)
 	}
-	targetFile := filepath.Join(env.SrcPath, p.Tarball)
+	targetFile := filepath.Join(env.SrcDir, p.Tarball)
 	if util.FileExists(targetFile) {
 		log.Printf("- %s already exists, not downloading...", targetFile)
 	} else {
-		log.Printf("- Downloading %s from %s into %s...", p.Name, p.URL, env.SrcPath)
+		log.Printf("- Downloading %s from %s into %s...", p.Name, p.URL, env.SrcDir)
 
 		// todo: do not assume wget
 		binPath, err := exec.LookPath("wget")
@@ -369,17 +372,18 @@ func (env *Info) download(p *app.Info) error {
 			return fmt.Errorf("cannot find wget: %s", err)
 		}
 
-		log.Printf("* Executing from %s: %s %s", env.SrcPath, binPath, p.URL)
+		log.Printf("* Executing from %s: %s %s", env.SrcDir, binPath, p.URL)
 		var stdout, stderr bytes.Buffer
 		cmd := exec.Command(binPath, p.URL)
-		cmd.Dir = env.SrcPath
+		cmd.Dir = env.SrcDir
 		cmd.Stderr = &stderr
 		cmd.Stdout = &stdout
 		err = cmd.Run()
 		if err != nil {
-			return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
+			return fmt.Errorf("command failed: %w - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
 		}
 	}
+	env.SrcPath = targetFile
 
 	return nil
 }
@@ -500,35 +504,7 @@ func (env *Info) Install(p *app.Info) error {
 	log.Printf("Environment: %s\n", strings.Join(env.Env, "\n"))
 	res := cmd.Run()
 	if res.Err != nil {
-		return fmt.Errorf("failed to install %s: %s; stdout: %s; stderr: %s", p.Name, res.Err, res.Stdout, res.Stderr)
-	}
-
-	return nil
-}
-
-func createHostEnvCfg(env *Info) error {
-	var err error
-
-	/* SET THE BUILD DIRECTORY */
-
-	// The build directory is always in the scratch
-	env.BuildDir, err = ioutil.TempDir(env.ScratchDir, "build")
-	if err != nil {
-		return fmt.Errorf("failed to create scratch directory: %s", err)
-	}
-
-	/* SET THE INSTALL DIRECTORY */
-
-	env.InstallDir, err = ioutil.TempDir(env.ScratchDir, "install")
-	if err != nil {
-		return fmt.Errorf("failed to get installation directory: %s", err)
-	}
-
-	/* SET THE SCRATCH DIRECTORY */
-
-	env.ScratchDir, err = ioutil.TempDir(env.ScratchDir, "scratch")
-	if err != nil {
-		return fmt.Errorf("failed to initialize directory %s: %s", env.ScratchDir, err)
+		return fmt.Errorf("failed to install %s: %w; stdout: %s; stderr: %s", p.Name, res.Err, res.Stdout, res.Stderr)
 	}
 
 	return nil
@@ -539,19 +515,19 @@ func (env *Info) Init() error {
 	if !util.PathExists(env.ScratchDir) {
 		err := os.MkdirAll(env.ScratchDir, 0755)
 		if err != nil {
-			return fmt.Errorf("failed to create scratch directory %s: %s", env.ScratchDir, err)
+			return fmt.Errorf("failed to create scratch directory %s: %w", env.ScratchDir, err)
 		}
 	}
 	if !util.PathExists(env.BuildDir) {
 		err := os.MkdirAll(env.BuildDir, 0755)
 		if err != nil {
-			return fmt.Errorf("failed to create build directory %s: %s", env.BuildDir, err)
+			return fmt.Errorf("failed to create build directory %s: %w", env.BuildDir, err)
 		}
 	}
 	if !util.PathExists(env.InstallDir) {
 		err := os.MkdirAll(env.InstallDir, 0755)
 		if err != nil {
-			return fmt.Errorf("failed to create build directory %s: %s", env.InstallDir, err)
+			return fmt.Errorf("failed to create build directory %s: %w", env.InstallDir, err)
 		}
 	}
 	return nil
