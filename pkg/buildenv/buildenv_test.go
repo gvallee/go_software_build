@@ -6,10 +6,13 @@
 package buildenv
 
 import (
+	"bytes"
 	"io/ioutil"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gvallee/go_software_build/pkg/app"
@@ -40,7 +43,7 @@ func TestDirURLGet(t *testing.T) {
 	defer os.RemoveAll(dir1)
 	t.Logf("Source directory is: %s", dir1)
 	appInfo.Name = "testApp"
-	appInfo.URL = "file://" + dir1
+	appInfo.Source.URL = "file://" + dir1
 
 	tempFile, err := ioutil.TempFile(dir1, "")
 	if err != nil {
@@ -64,7 +67,7 @@ func TestDirURLGet(t *testing.T) {
 	expectedEnv.SrcPath = expectedEnv.SrcDir
 
 	expectedFile := filepath.Join(expectedEnv.SrcDir, filepath.Base(tempFile.Name()))
-	t.Logf("Checking if %s was correctly installed,,,", expectedFile)
+	t.Logf("Checking if %s was correctly installed...", expectedFile)
 	if !util.FileExists(expectedFile) {
 		t.Fatalf("expected file %s does not exist", expectedFile)
 	}
@@ -81,7 +84,7 @@ func TestDirURLGet(t *testing.T) {
 func getHelloWorldSrc(t *testing.T) (*Info, *app.Info) {
 	a := new(app.Info)
 	a.Name = "helloworld"
-	a.URL = "https://github.com/gvallee/c_hello_world/archive/1.0.0.tar.gz"
+	a.Source.URL = "https://github.com/gvallee/c_hello_world/archive/1.0.0.tar.gz"
 	a.Version = "1.0.0"
 
 	testEnv := new(Info)
@@ -94,7 +97,29 @@ func getHelloWorldSrc(t *testing.T) (*Info, *app.Info) {
 
 	err = testEnv.Get(a)
 	if err != nil {
-		t.Fatalf("unable to download %s: %s", a.URL, err)
+		t.Fatalf("unable to download %s: %s", a.Source.URL, err)
+	}
+
+	return testEnv, a
+}
+
+func getHelloWorldGit(t *testing.T) (*Info, *app.Info) {
+	a := new(app.Info)
+	a.Name = "c_hello_world"
+	a.Source.URL = "git@github.com:gvallee/c_hello_world.git"
+	a.Source.Branch = "test"
+	a.Version = "1.0.0"
+
+	testEnv := new(Info)
+	var err error
+	testEnv.BuildDir, err = ioutil.TempDir("", "")
+	if err != nil {
+		t.Fatalf("unable to create temporary directory: %s", err)
+	}
+
+	err = testEnv.Get(a)
+	if err != nil {
+		t.Fatalf("unable to download %s: %s", a.Source.URL, err)
 	}
 
 	return testEnv, a
@@ -104,14 +129,46 @@ func TestFileURLGet(t *testing.T) {
 	testEnv, a := getHelloWorldSrc(t)
 	defer os.RemoveAll(testEnv.SrcPath)
 
-	expectedFile := filepath.Join(testEnv.SrcDir, filepath.Base(a.URL))
-	t.Logf("Checking if %s was correctly installed...", expectedFile)
-	if !util.FileExists(testEnv.SrcPath) {
-		t.Fatalf("expected file %s does not exist", testEnv.SrcPath)
+	var expectedEnv Info
+	expectedEnv.SrcDir = filepath.Join(testEnv.BuildDir, a.Name)
+	expectedEnv.SrcPath = filepath.Join(expectedEnv.SrcDir, filepath.Base(a.Source.URL))
+	t.Logf("Checking if %s was correctly installed...", expectedEnv.SrcPath)
+	if !util.FileExists(expectedEnv.SrcPath) {
+		t.Fatalf("expected file %s does not exist", expectedEnv.SrcPath)
 	}
-	if testEnv.SrcPath != expectedFile {
-		t.Fatalf("resulting file does not match the expected one: %s vs. expected %s", testEnv.SrcPath, expectedFile)
+}
+
+func TestGitGet(t *testing.T) {
+	testEnv, a := getHelloWorldGit(t)
+	defer os.RemoveAll(testEnv.BuildDir)
+
+	var expectedEnv Info
+	expectedEnv.SrcPath = filepath.Join(testEnv.BuildDir, a.Name, a.Name)
+	expectedEnv.SrcDir = filepath.Join(testEnv.BuildDir, a.Name, a.Name)
+	t.Logf("Checking if %s was correctly installed...", expectedEnv.SrcPath)
+	if !util.PathExists(expectedEnv.SrcPath) {
+		t.Fatalf("expected file %s does not exist", expectedEnv.SrcPath)
 	}
+
+	t.Log("Checking that we got the correct branch...")
+	gitBin, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatalf("failed to find git: %s", err)
+	}
+	gitBranchCmd := exec.Command(gitBin, "branch")
+	gitBranchCmd.Dir = expectedEnv.SrcDir
+	var stderr, stdout bytes.Buffer
+	gitBranchCmd.Stderr = &stderr
+	gitBranchCmd.Stdout = &stdout
+	err = gitBranchCmd.Run()
+	if err != nil {
+		t.Fatalf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "* "+a.Source.Branch) {
+		t.Fatalf("incorrect branch: %s", stdout.String())
+	}
+
+	checkResultBuildEnv(*testEnv, expectedEnv, t)
 }
 
 func TestMakeExtraArgs(t *testing.T) {
@@ -140,7 +197,9 @@ func TestGetAppInstallDir(t *testing.T) {
 			},
 			appInfo: app.Info{
 				Name: "Application1",
-				URL:  "https://something/toto.tar.gz",
+				Source: app.SourceCode{
+					URL: "https://something/toto.tar.gz",
+				},
 			},
 			expectedInstallDir: "/one/dummy/path/Application1",
 		},
@@ -151,7 +210,9 @@ func TestGetAppInstallDir(t *testing.T) {
 			},
 			appInfo: app.Info{
 				Name: "",
-				URL:  "https://something/application2.tar.bz2",
+				Source: app.SourceCode{
+					URL: "https://something/application2.tar.bz2",
+				},
 			},
 			expectedInstallDir: "/one/dummy/path/application2",
 		},
@@ -162,7 +223,9 @@ func TestGetAppInstallDir(t *testing.T) {
 			},
 			appInfo: app.Info{
 				Name: "",
-				URL:  "https://something/application3.git",
+				Source: app.SourceCode{
+					URL: "https://something/application3.git",
+				},
 			},
 			expectedInstallDir: "/one/dummy/path/application3",
 		},
