@@ -26,7 +26,7 @@ import (
 type GetConfigureExtraArgsFn func() []string
 
 // ConfigureFn is the function prototype to configuration a specific software
-type ConfigureFn func(*buildenv.Info, string, []string) error
+type ConfigureFn func(*buildenv.Info, string, []string, string) error
 
 // Builder gathers all the data specific to a software builder
 type Builder struct {
@@ -57,12 +57,16 @@ type Builder struct {
 var makefileSpellings = []string{"Makefile", "makefile"}
 
 // GenericConfigure is a generic function to configure a software, basically a wrapper around autotool's configure
-func GenericConfigure(env *buildenv.Info, appName string, extraArgs []string) error {
+func GenericConfigure(env *buildenv.Info, appName string, extraArgs []string, configurePreludeCmd string) error {
 	var ac autotools.Config
 	ac.Install = filepath.Join(env.InstallDir, appName)
 	ac.Source = env.SrcDir
 	ac.ConfigureEnv = env.Env
 	ac.ExtraConfigureArgs = extraArgs
+<<<<<<< HEAD
+=======
+	ac.ConfigurePreludeCmd = configurePreludeCmd
+>>>>>>> 05e3838 (Add support for stack management)
 	err := ac.Configure()
 	if err != nil {
 		return fmt.Errorf("failed to configure software: %s", err)
@@ -202,6 +206,7 @@ func (b *Builder) Install() advexec.Result {
 	}
 	if util.PathExists(appInstallDir) {
 		log.Printf("* %s already exists, skipping installation...", appInstallDir)
+		b.Env.SrcDir = appInstallDir
 		return res
 	}
 
@@ -226,7 +231,15 @@ func (b *Builder) Install() advexec.Result {
 	b.App.AutotoolsCfg.Source = b.Env.SrcDir
 	b.App.AutotoolsCfg.Detect()
 
-	res.Err = b.Configure(&b.Env, b.App.Name, b.ConfigureExtraArgs)
+	// Right now, we assume we do not have to install autotools, which is a bad assumption
+	var extraArgs []string
+	if b.GetConfigureExtraArgs != nil {
+		extraArgs = b.GetConfigureExtraArgs()
+	}
+	if len(b.App.AutotoolsCfg.ExtraConfigureArgs) > 0 {
+		extraArgs = append(extraArgs, b.App.AutotoolsCfg.ExtraConfigureArgs...)
+	}
+	res.Err = b.Configure(&b.Env, b.App.Name, extraArgs, b.App.AutotoolsCfg.ConfigurePreludeCmd)
 	if res.Err != nil {
 		res.Err = fmt.Errorf("failed to configure %s: %s", b.App.Name, res.Err)
 		return res
