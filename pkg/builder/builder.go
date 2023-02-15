@@ -63,10 +63,7 @@ func GenericConfigure(env *buildenv.Info, appName string, extraArgs []string, co
 	ac.Source = env.SrcDir
 	ac.ConfigureEnv = env.Env
 	ac.ExtraConfigureArgs = extraArgs
-<<<<<<< HEAD
-=======
 	ac.ConfigurePreludeCmd = configurePreludeCmd
->>>>>>> 05e3838 (Add support for stack management)
 	err := ac.Configure()
 	if err != nil {
 		return fmt.Errorf("failed to configure software: %s", err)
@@ -233,9 +230,6 @@ func (b *Builder) Install() advexec.Result {
 
 	// Right now, we assume we do not have to install autotools, which is a bad assumption
 	var extraArgs []string
-	if b.GetConfigureExtraArgs != nil {
-		extraArgs = b.GetConfigureExtraArgs()
-	}
 	if len(b.App.AutotoolsCfg.ExtraConfigureArgs) > 0 {
 		extraArgs = append(extraArgs, b.App.AutotoolsCfg.ExtraConfigureArgs...)
 	}

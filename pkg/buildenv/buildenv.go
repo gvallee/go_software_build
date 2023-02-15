@@ -207,9 +207,9 @@ func (env *Info) copyTarball(p *app.Info) error {
 		log.Printf("%s already exists, not copying", targetTarballPath)
 	} else {
 		// The begining of the URL starts with 'file://' which we do not want
-		err := util.CopyFile(p.URL[7:], targetTarballPath)
+		err := util.CopyFile(p.Source.URL[7:], targetTarballPath)
 		if err != nil {
-			return fmt.Errorf("cannot copy file %s to %s: %w", p.URL, targetTarballPath, err)
+			return fmt.Errorf("cannot copy file %s to %s: %w", p.Source.URL, targetTarballPath, err)
 		}
 	}
 
@@ -355,11 +355,12 @@ func (env *Info) Get(p *app.Info) error {
 
 func (env *Info) download(p *app.Info) error {
 	// Sanity checks
+	if p.Source.URL == "" {
+		return fmt.Errorf("p.URL is undefined")
+	}
+
 	if env.SrcDir == "" {
 		return fmt.Errorf("env.SrcPath is undefined")
-	}
-	if p.Source.URL == "" || env.BuildDir == "" {
-		return fmt.Errorf("invalid download() parameter(s)")
 	}
 
 	if !util.PathExists(env.SrcDir) {

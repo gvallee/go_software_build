@@ -30,6 +30,7 @@ type Component struct {
 	ConfigId            string `json:"configure_id"`
 	ConfigureDependency string `json:"configure_dependency"`
 	ConfigurePrelude    string `json:"configure_prelude"`
+	ConfigureParams     string `json:"configure_params"`
 }
 
 type StackDef struct {
@@ -148,6 +149,11 @@ func (c *Config) InstallStack() error {
 				configureOption := fmt.Sprintf("--with-%s=%s", ref, installedComponents[dep])
 				b.App.AutotoolsCfg.ExtraConfigureArgs = append(b.App.AutotoolsCfg.ExtraConfigureArgs, configureOption)
 			}
+		}
+
+		if softwareComponents.ConfigureParams != "" {
+			args := strings.Split(softwareComponents.ConfigureParams, " ")
+			b.App.AutotoolsCfg.ExtraConfigureArgs = append(b.App.AutotoolsCfg.ExtraConfigureArgs, args...)
 		}
 
 		if softwareComponents.ConfigurePrelude != "" {

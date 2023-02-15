@@ -39,17 +39,17 @@ func setBuilder(t *testing.T) (*Builder, func()) {
 	t.Logf("Build directory: %s", b.Env.BuildDir)
 
 	// Create a directory where software is downloaded
-	b.Env.SrcPath, err = ioutil.TempDir("", "")
+	b.Env.SrcDir, err = ioutil.TempDir("", "")
 	if err != nil {
 		t.Fatalf("unable to create src directory: %s", err)
 	}
-	t.Logf("Src path: %s", b.Env.SrcPath)
+	t.Logf("Src directory: %s", b.Env.SrcDir)
 
 	cleanupFn := func() {
 		os.RemoveAll(b.Env.ScratchDir)
 		os.RemoveAll(b.Env.InstallDir)
 		os.RemoveAll(b.Env.BuildDir)
-		os.RemoveAll(b.Env.SrcPath)
+		os.RemoveAll(b.Env.SrcDir)
 	}
 
 	return b, cleanupFn
@@ -175,7 +175,7 @@ func TestPersistentBuildFromLocalTarball(t *testing.T) {
 	defer cleanupFn()
 
 	b.App.Name = "test"
-	b.App.URL = "file://" + filepath.Join(downloadDir, tarballFilename)
+	b.App.Source.URL = "file://" + filepath.Join(downloadDir, tarballFilename)
 	err = b.Load(true)
 	if err != nil {
 		t.Fatalf("unable to load builder: %s", err)
