@@ -522,36 +522,6 @@ func (env *Info) Install(p *app.Info) error {
 	return nil
 }
 
-/*
-func createHostEnvCfg(env *Info) error {
-	var err error
-
-	// SET THE BUILD DIRECTORY
-
-	// The build directory is always in the scratch
-	env.BuildDir, err = ioutil.TempDir(env.ScratchDir, "build")
-	if err != nil {
-		return fmt.Errorf("failed to create scratch directory: %s", err)
-	}
-
-	// SET THE INSTALL DIRECTORY
-
-	env.InstallDir, err = ioutil.TempDir(env.ScratchDir, "install")
-	if err != nil {
-		return fmt.Errorf("failed to get installation directory: %s", err)
-	}
-
-	// SET THE SCRATCH DIRECTORY
-
-	env.ScratchDir, err = ioutil.TempDir(env.ScratchDir, "scratch")
-	if err != nil {
-		return fmt.Errorf("failed to initialize directory %s: %s", env.ScratchDir, err)
-	}
-
-	return nil
-}
-*/
-
 // Init ensures that the buildenv is correctly initialized
 func (env *Info) Init() error {
 	if !util.PathExists(env.ScratchDir) {
