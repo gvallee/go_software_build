@@ -186,7 +186,7 @@ func (b *Builder) Install() advexec.Result {
 		res.Err = fmt.Errorf("undefined install directory")
 		return res
 	}
-	if b.App.URL == "" {
+	if b.App.Source.URL == "" {
 		res.Err = fmt.Errorf("undefined application's URL")
 		return res
 	}
@@ -209,7 +209,7 @@ func (b *Builder) Install() advexec.Result {
 
 	res.Err = b.Env.Get(&b.App)
 	if res.Err != nil {
-		res.Err = fmt.Errorf("failed to download software from %s: %s", b.App.URL, res.Err)
+		res.Err = fmt.Errorf("failed to download software from %s: %s", b.App.Source.URL, res.Err)
 		return res
 	}
 	if b.Env.SrcPath == "" {
@@ -271,6 +271,14 @@ func (b *Builder) Load(persistent bool) error {
 	// so we should be able to do a autodetect instead of forcing autotools
 	b.Configure = GenericConfigure
 
+	if b.App.Name == "" {
+		return fmt.Errorf("application's name is undefined")
+	}
+
+	if b.App.Source.URL == "" {
+		return fmt.Errorf("the URL to download application is undefined")
+	}
+
 	if b.Env.ScratchDir == "" {
 		return fmt.Errorf("scratch directory is undefined")
 	}
@@ -293,7 +301,7 @@ func (b *Builder) Compile() error {
 	var buildEnv buildenv.Info
 	buildEnv.BuildDir = filepath.Join(b.Env.ScratchDir, b.App.Name)
 	buildEnv.InstallDir = filepath.Join(b.Env.InstallDir, b.App.Name)
-	buildEnv.SrcPath = filepath.Join(b.Env.SrcDir, filepath.Base(b.App.URL))
+	buildEnv.SrcPath = filepath.Join(b.Env.SrcDir, filepath.Base(b.App.Source.URL))
 
 	if !util.PathExists(buildEnv.BuildDir) {
 		err := util.DirInit(buildEnv.BuildDir)
@@ -314,7 +322,7 @@ func (b *Builder) Compile() error {
 	// Download the app
 	err := buildEnv.Get(&b.App)
 	if err != nil {
-		return fmt.Errorf("unable to get the application from %s: %s", b.App.URL, err)
+		return fmt.Errorf("unable to get the application from %s: %s", b.App.Source.URL, err)
 	}
 
 	// Unpacking the app

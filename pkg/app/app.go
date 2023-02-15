@@ -7,10 +7,21 @@ package app
 
 import "github.com/gvallee/go_software_build/internal/pkg/autotools"
 
+type SourceCode struct {
+	// URL is the url to use to download the app
+	URL string
+
+	// Branch is the specific flavor of the code to use. Directly applicable to git for example
+	Branch string
+}
+
 // Info gathers information about a given application
 type Info struct {
 	// Name is the name of the application
 	Name string
+
+	// Information about the source code of the applicatin
+	Source SourceCode
 
 	// BinName is the name of the binary to start executing the application
 	BinName string
@@ -20,9 +31,6 @@ type Info struct {
 
 	// BinArgs is the list of argument that the application's binary needs
 	BinArgs []string
-
-	// URL is the url to use to download the app
-	URL string
 
 	// InstallCmd is the command to execute to install the app (in case it is not a standard command)
 	InstallCmd string
