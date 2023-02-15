@@ -40,22 +40,19 @@ type StackDef struct {
 }
 
 type Config struct {
-	DefFilePath    string
-	ConfigFilePath string
-	Private        bool
+	DefFilePath     string
+	ConfigFilePath  string
+	Private         bool
+	loaded          bool
+	StackConfig     *StackCfg
+	StackDefinition *StackDef
 }
 
 const (
 	defaultPermission = 0766
 )
 
-func (c *Config) InstallStack() error {
-	// A map of all the installed components where the key of the component's name and the value the directory where it is installed
-	installedComponents := make(map[string]string)
-
-	// A map of all the identifiers used to configure the different components with dependencies
-	configIds := make(map[string]string)
-
+func (c *Config) Load() error {
 	// unmarshale the two configuration files
 	defFile, err := os.Open(c.DefFilePath)
 	if err != nil {
@@ -65,8 +62,8 @@ func (c *Config) InstallStack() error {
 	if err != nil {
 		return fmt.Errorf("unable to read the content of %s: %w", c.DefFilePath, err)
 	}
-	stackDef := new(StackDef)
-	err = json.Unmarshal(defContent, &stackDef)
+	c.StackDefinition = new(StackDef)
+	err = json.Unmarshal(defContent, &c.StackDefinition)
 	if err != nil {
 		return fmt.Errorf("unable to unmarshal content of %s: %w", c.DefFilePath, err)
 	}
@@ -79,31 +76,48 @@ func (c *Config) InstallStack() error {
 	if err != nil {
 		return fmt.Errorf("unable to read the content of %s: %w", c.ConfigFilePath, err)
 	}
-	stackCfg := new(StackCfg)
-	err = json.Unmarshal(cfgContent, &stackCfg)
+	c.StackConfig = new(StackCfg)
+	err = json.Unmarshal(cfgContent, &c.StackConfig)
 	if err != nil {
 		return fmt.Errorf("unable to unmarshal content of %s: %w", c.ConfigFilePath, err)
 	}
+	c.loaded = true
+	return nil
+}
 
-	if stackDef.Type == "private" && c.Private {
-		return fmt.Errorf("you are trying to install a private stack on a public system, which is strictly prohibited! Please use the -private option if you are on a private system to deploy the target stack")
-	}
+func (c *Config) InstallStack() error {
+	// A map of all the installed components where the key of the component's name and the value the directory where it is installed
+	installedComponents := make(map[string]string)
 
-	if !util.PathExists(stackCfg.InstallDir) {
-		err = os.MkdirAll(stackCfg.InstallDir, defaultPermission)
+	// A map of all the identifiers used to configure the different components with dependencies
+	configIds := make(map[string]string)
+
+	if !c.loaded {
+		err := c.Load()
 		if err != nil {
-			return fmt.Errorf("unable to create installation directory %s: %w", stackCfg.InstallDir, err)
+			return fmt.Errorf("unable to load configuration: %w", err)
 		}
 	}
 
-	for _, softwareComponents := range stackDef.Components {
+	if c.StackDefinition.Type == "private" && c.Private {
+		return fmt.Errorf("you are trying to install a private stack on a public system, which is strictly prohibited! Please use the -private option if you are on a private system to deploy the target stack")
+	}
+
+	if !util.PathExists(c.StackConfig.InstallDir) {
+		err := os.MkdirAll(c.StackConfig.InstallDir, defaultPermission)
+		if err != nil {
+			return fmt.Errorf("unable to create installation directory %s: %w", c.StackConfig.InstallDir, err)
+		}
+	}
+
+	for _, softwareComponents := range c.StackDefinition.Components {
 
 		// Set a builder
 		b := new(builder.Builder)
 
-		stackBasedir := filepath.Join(stackCfg.InstallDir, stackDef.Name)
+		stackBasedir := filepath.Join(c.StackConfig.InstallDir, c.StackDefinition.Name)
 		if !util.PathExists(stackBasedir) {
-			err = os.MkdirAll(stackBasedir, defaultPermission)
+			err := os.MkdirAll(stackBasedir, defaultPermission)
 			if err != nil {
 				return fmt.Errorf("unable to create %s: %w", stackBasedir, err)
 			}
