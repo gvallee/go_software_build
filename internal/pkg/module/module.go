@@ -15,7 +15,7 @@ const (
 	defaultPermission  = 0766
 	modulePrelude      = "#%Module1.0\n\n"
 	conflictKeyword    = "conflict "
-	requireKeyword     = "require "
+	requireKeyword     = "module load "
 	setKeyword         = "set "
 	setenvKeyword      = "setenv "
 	prependPathKeyword = "prepend-path "
