@@ -128,6 +128,7 @@ func (c *Config) InstallStack() error {
 		b.Env.ScratchDir = filepath.Join(stackBasedir, "scratch")
 		b.Env.InstallDir = filepath.Join(stackBasedir, "install")
 		b.Env.BuildDir = filepath.Join(stackBasedir, "build")
+		b.Env.SrcDir = filepath.Join(stackBasedir, "src")
 		b.Env.Env = c.BuildEnv
 
 		if !util.PathExists(b.Env.ScratchDir) {
@@ -148,6 +149,13 @@ func (c *Config) InstallStack() error {
 			err := os.MkdirAll(b.Env.BuildDir, defaultPermission)
 			if err != nil {
 				return fmt.Errorf("unable to create %s: %w", b.Env.BuildDir, err)
+			}
+		}
+
+		if !util.PathExists(b.Env.SrcDir) {
+			err := os.MkdirAll(b.Env.SrcDir, defaultPermission)
+			if err != nil {
+				return fmt.Errorf("unable to create %s: %w", b.Env.SrcDir, err)
 			}
 		}
 
