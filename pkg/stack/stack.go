@@ -241,7 +241,10 @@ func (c *Config) Import(filePath string) error {
 
 	stackBasedir := filepath.Join(c.StackConfig.InstallDir, c.StackDefinition.Name)
 	if !util.PathExists(stackBasedir) {
-		return fmt.Errorf("%s does not exist", stackBasedir)
+		err := os.MkdirAll(stackBasedir, defaultPermission)
+		if err != nil {
+			return fmt.Errorf("unable to create %s: %w", stackBasedir, err)
+		}
 	}
 
 	tarBin, err := exec.LookPath("tar")
