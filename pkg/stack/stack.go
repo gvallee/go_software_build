@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/gvallee/go_software_build/internal/pkg/module"
 	"github.com/gvallee/go_software_build/pkg/builder"
 	"github.com/gvallee/go_util/pkg/util"
 )
@@ -114,7 +115,6 @@ func (c *Config) InstallStack() error {
 	}
 
 	for _, softwareComponents := range c.StackDefinition.Components {
-
 		// Set a builder
 		b := new(builder.Builder)
 
@@ -270,5 +270,80 @@ func (c *Config) Import(filePath string) error {
 	}
 
 	fmt.Printf("Stack successfully import in %s\n", stackBasedir)
+	return nil
+}
+
+func (c *Config) GenerateModules(copyright string) error {
+	err := c.Load()
+	if err != nil {
+		return fmt.Errorf("c.Load() failed: %w", err)
+	}
+
+	stackBasedir := filepath.Join(c.StackConfig.InstallDir, c.StackDefinition.Name)
+	if !util.PathExists(stackBasedir) {
+		return fmt.Errorf("stack base directory %s does not exist", stackBasedir)
+	}
+
+	modulefileDir := filepath.Join(stackBasedir, "modulefiles")
+	if !util.PathExists(modulefileDir) {
+		err := os.MkdirAll(modulefileDir, defaultPermission)
+		if err != nil {
+			return fmt.Errorf("unable to create %s: %w", modulefileDir, err)
+		}
+	}
+
+	for _, softwareComponent := range c.StackDefinition.Components {
+		var requires []string
+		vars := make(map[string]string)
+		envVars := make(map[string]string)
+		envLayout := make(map[string][]string)
+
+		// Set the requirements
+		if softwareComponent.ConfigureDependency != "" {
+			deps := strings.Split(softwareComponent.ConfigureDependency, ",")
+			requires = append(requires, deps...)
+		}
+
+		// Set the vars
+		vars["software_stack_dir"] = stackBasedir
+
+		compInstallDir := filepath.Join(stackBasedir, "install", softwareComponent.Name)
+		compBinDir := filepath.Join(compInstallDir, "bin")
+		compLibDir := filepath.Join(compInstallDir, "lib")
+		compIncDir := filepath.Join(compInstallDir, "include")
+		compManDir := filepath.Join(compInstallDir, "man")
+		compPkgDir := filepath.Join(compLibDir, "pkgconfig")
+
+		// Set the new environment variables
+
+		// Prepend existing environment variables
+		if util.PathExists(compBinDir) {
+			envLayout["PATH"] = append(envLayout["PATH"], compBinDir)
+		}
+
+		if util.PathExists(compLibDir) {
+			envLayout["LIBRARY_PATH"] = append(envLayout["LIBRARY_PATH"], compLibDir)
+			envLayout["LD_LIBRARY_PATH"] = append(envLayout["LD_LIBRARY_PATH"], compLibDir)
+		}
+
+		if util.PathExists(compIncDir) {
+			envLayout["CPATH"] = append(envLayout["CPATH"], compIncDir)
+		}
+
+		if util.PathExists(compManDir) {
+			envLayout["MANPATH"] = append(envLayout["MANPATH"], compManDir)
+		}
+
+		if util.PathExists(compPkgDir) {
+			envLayout["PKG_CONFIG_PATH"] = append(envLayout["PKG_CONFIG_PATH"], compPkgDir)
+		}
+
+		err := module.Generate(modulefileDir, copyright, softwareComponent.Name, requires, nil, vars, envVars, envLayout)
+		if err != nil {
+			return fmt.Errorf("module.Generate() failed: %w", err)
+		}
+	}
+
+	fmt.Printf("modules successfully creates, to use them: module use %s\n", modulefileDir)
 	return nil
 }
