@@ -55,13 +55,16 @@ func autogen(cfg *Config) error {
 	}
 
 	var cmd advexec.Advcmd
-	cmd.BinPath = filepath.Join(cfg.Source, "autogen.sh")
-	if !util.FileExists(cmd.BinPath) {
-		cmd.BinPath = filepath.Join(cfg.Source, "autogen.pl")
+	cmd.BinPath = "./autogen.sh"
+	targetBin := filepath.Join(cfg.Source, "autogen.sh")
+
+	if !util.FileExists(targetBin) {
+		cmd.BinPath = "./autogen.pl"
 	}
 	cmd.ManifestName = "autogen"
 	cmd.ManifestDir = cfg.Install
 	cmd.ExecDir = cfg.Source
+	cmd.Env = cfg.ConfigureEnv
 	res := cmd.Run()
 	if res.Err != nil {
 		return fmt.Errorf("unable to run autogen from %s, command failed: %w - stdout: %s - stderr: %s", cfg.Source, res.Err, res.Stdout, res.Stderr)
