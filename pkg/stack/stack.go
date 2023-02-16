@@ -7,11 +7,13 @@
 package stack
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -44,6 +46,7 @@ type Config struct {
 	ConfigFilePath  string
 	Private         bool
 	loaded          bool
+	BuildEnv        []string
 	StackConfig     *StackCfg
 	StackDefinition *StackDef
 }
@@ -125,6 +128,7 @@ func (c *Config) InstallStack() error {
 		b.Env.ScratchDir = filepath.Join(stackBasedir, "scratch")
 		b.Env.InstallDir = filepath.Join(stackBasedir, "install")
 		b.Env.BuildDir = filepath.Join(stackBasedir, "build")
+		b.Env.Env = c.BuildEnv
 
 		if !util.PathExists(b.Env.ScratchDir) {
 			err := os.MkdirAll(b.Env.ScratchDir, defaultPermission)
@@ -191,5 +195,69 @@ func (c *Config) InstallStack() error {
 		log.Printf("-> %s was successfully installed in %s", softwareComponents.Name, b.Env.SrcDir)
 	}
 
+	return nil
+}
+
+func (c *Config) Export() error {
+	err := c.Load()
+	if err != nil {
+		return fmt.Errorf("c.Load() failed: %w", err)
+	}
+
+	stackBasedir := filepath.Join(c.StackConfig.InstallDir, c.StackDefinition.Name)
+	if !util.PathExists(stackBasedir) {
+		return fmt.Errorf("%s does not exist", stackBasedir)
+	}
+
+	installDir := filepath.Join(stackBasedir, "install")
+	if !util.PathExists(installDir) {
+		return fmt.Errorf("%s does not exist", installDir)
+	}
+
+	tarballFilename := c.StackDefinition.Name + ".tar.bz2"
+	tarBin, err := exec.LookPath("tar")
+	if err != nil {
+		return fmt.Errorf("tar is not available: %w", err)
+	}
+	tarCmd := exec.Command(tarBin, "-cjf", tarballFilename, "install")
+	tarCmd.Dir = stackBasedir
+	var stderr, stdout bytes.Buffer
+	tarCmd.Stderr = &stderr
+	tarCmd.Stdout = &stdout
+	err = tarCmd.Run()
+	if err != nil {
+		return fmt.Errorf("command failed: %w - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
+	}
+
+	fmt.Printf("Stack successfully export: %s\n", filepath.Join(stackBasedir, tarballFilename))
+	return nil
+}
+
+func (c *Config) Import(filePath string) error {
+	err := c.Load()
+	if err != nil {
+		return fmt.Errorf("c.Load() failed: %w", err)
+	}
+
+	stackBasedir := filepath.Join(c.StackConfig.InstallDir, c.StackDefinition.Name)
+	if !util.PathExists(stackBasedir) {
+		return fmt.Errorf("%s does not exist", stackBasedir)
+	}
+
+	tarBin, err := exec.LookPath("tar")
+	if err != nil {
+		return fmt.Errorf("ERROR: tar is not available: %w", err)
+	}
+	tarCmd := exec.Command(tarBin, "-xjf", filePath)
+	tarCmd.Dir = stackBasedir
+	var stderr, stdout bytes.Buffer
+	tarCmd.Stderr = &stderr
+	tarCmd.Stdout = &stdout
+	err = tarCmd.Run()
+	if err != nil {
+		return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
+	}
+
+	fmt.Printf("Stack successfully import in %s\n", stackBasedir)
 	return nil
 }
