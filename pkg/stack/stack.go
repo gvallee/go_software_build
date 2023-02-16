@@ -44,6 +44,7 @@ type Config struct {
 	ConfigFilePath  string
 	Private         bool
 	loaded          bool
+	BuildEnv        []string
 	StackConfig     *StackCfg
 	StackDefinition *StackDef
 }
@@ -125,6 +126,7 @@ func (c *Config) InstallStack() error {
 		b.Env.ScratchDir = filepath.Join(stackBasedir, "scratch")
 		b.Env.InstallDir = filepath.Join(stackBasedir, "install")
 		b.Env.BuildDir = filepath.Join(stackBasedir, "build")
+		b.Env.Env = c.BuildEnv
 
 		if !util.PathExists(b.Env.ScratchDir) {
 			err := os.MkdirAll(b.Env.ScratchDir, defaultPermission)
