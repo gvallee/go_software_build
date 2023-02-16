@@ -36,7 +36,7 @@ type Info struct {
 	SrcPath string
 
 	// SrcDir is the directory where the source code is
-	// This value is set by the tool after getting the package's source code
+	// This value may be updated  by the tool after getting the package's source code
 	SrcDir string
 
 	// ScratchDir is the directory where we can store temporary data
