@@ -9,10 +9,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"path/filepath"
+	"strings"
 )
 
 const (
-	defaultPermission  = 0766
+	defaultPermission  = 0775
 	modulePrelude      = "#%Module1.0\n\n"
 	conflictKeyword    = "conflict "
 	requireKeyword     = "module load "
@@ -24,7 +25,7 @@ const (
 // Generate the file required to be able to use module for a specific software component.
 // envVars specifies all the environment variables that needs to be set
 // envLayout specifies the various environment variable to be preprended, the key is the target (e.g., PATH or LD_LIBRARY_PATH), the values path to a install directory
-func Generate(path string, copyright string, name string, requires []string, conflicts []string, vars map[string]string, envVars map[string]string, envLayout map[string][]string) error {
+func Generate(path, copyright, customEnvVarPrefix, name string, requires []string, conflicts []string, vars map[string]string, envVars map[string]string, envLayout map[string][]string) error {
 	modulefilePath := filepath.Join(path, name)
 
 	content := modulePrelude
@@ -50,7 +51,15 @@ func Generate(path string, copyright string, name string, requires []string, con
 	content += "\n"
 
 	for varName, varValue := range envVars {
-		content += setenvKeyword + varName + " " + varValue + "\n"
+		if customEnvVarPrefix == "" {
+			content += setenvKeyword + varName + " " + varValue + "\n"
+		} else {
+			if strings.HasPrefix(varName, customEnvVarPrefix) {
+				content += setenvKeyword + varName + " " + varValue + "\n"
+			} else {
+				content += setenvKeyword + customEnvVarPrefix + varName + " " + varValue + "\n"
+			}
+		}
 	}
 
 	content += "\n"
