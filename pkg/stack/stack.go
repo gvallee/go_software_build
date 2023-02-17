@@ -319,6 +319,46 @@ func (c *Config) GenerateModules(copyright, customEnvVarPrefix string) error {
 		compBasedirVarValue := compInstallDir
 		envVars[compBasedirVarName] = compBasedirVarValue
 
+		compBuildDir := filepath.Join(stackBasedir, "build", softwareComponent.Name)
+		if util.PathExists(compBuildDir) {
+			// Figure out the actual directory that was used
+			list, err := ioutil.ReadDir(compBuildDir)
+			targetDir := ""
+			if err != nil {
+				return fmt.Errorf("unable to read content of %s: %w", compBuildDir, err)
+			}
+			for _, entry := range list {
+				if util.IsDir(filepath.Join(compBuildDir, entry.Name())) {
+					targetDir = entry.Name()
+					break
+				}
+			}
+			if targetDir == "" {
+				return fmt.Errorf("unable to find build directory from %s: %w", compBuildDir, err)
+			}
+			compBuildDirVarName := strings.ToUpper(softwareComponent.Name) + "_BUILD_DIR"
+			compBuildDirVarValue := filepath.Join(compBuildDir, targetDir)
+			envVars[compBuildDirVarName] = compBuildDirVarValue
+		} else {
+			compSrcDir := filepath.Join(stackBasedir, "src")
+			targetDir := ""
+			listSrcDirs, err := ioutil.ReadDir(compSrcDir)
+			if err != nil {
+				return fmt.Errorf("unable to get content of %s: %w", compSrcDir, err)
+			}
+			for _, entry := range listSrcDirs {
+				if strings.Contains(entry.Name(), softwareComponent.Name) {
+					targetDir = entry.Name()
+				}
+			}
+			if targetDir == "" {
+				return fmt.Errorf("unable to find build directory from %s: %w", compSrcDir, err)
+			}
+			compSrcDirVarName := strings.ToUpper(softwareComponent.Name) + "_BUILD_DIR"
+			compSrcDirVarValue := filepath.Join(compSrcDir, targetDir)
+			envVars[compSrcDirVarName] = compSrcDirVarValue
+		}
+
 		// Prepend existing environment variables
 		if util.PathExists(compBinDir) {
 			envLayout["PATH"] = append(envLayout["PATH"], compBinDir)
