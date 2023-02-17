@@ -53,7 +53,7 @@ type Config struct {
 }
 
 const (
-	defaultPermission = 0766
+	defaultPermission = 0775
 )
 
 func (c *Config) Load() error {
@@ -273,7 +273,7 @@ func (c *Config) Import(filePath string) error {
 	return nil
 }
 
-func (c *Config) GenerateModules(copyright string) error {
+func (c *Config) GenerateModules(copyright, customEnvVarPrefix string) error {
 	err := c.Load()
 	if err != nil {
 		return fmt.Errorf("c.Load() failed: %w", err)
@@ -315,6 +315,9 @@ func (c *Config) GenerateModules(copyright string) error {
 		compPkgDir := filepath.Join(compLibDir, "pkgconfig")
 
 		// Set the new environment variables
+		compBasedirVarName := strings.ToUpper(softwareComponent.Name) + "_DIR"
+		compBasedirVarValue := compInstallDir
+		envVars[compBasedirVarName] = compBasedirVarValue
 
 		// Prepend existing environment variables
 		if util.PathExists(compBinDir) {
@@ -338,7 +341,7 @@ func (c *Config) GenerateModules(copyright string) error {
 			envLayout["PKG_CONFIG_PATH"] = append(envLayout["PKG_CONFIG_PATH"], compPkgDir)
 		}
 
-		err := module.Generate(modulefileDir, copyright, softwareComponent.Name, requires, nil, vars, envVars, envLayout)
+		err := module.Generate(modulefileDir, copyright, customEnvVarPrefix, softwareComponent.Name, requires, nil, vars, envVars, envLayout)
 		if err != nil {
 			return fmt.Errorf("module.Generate() failed: %w", err)
 		}
