@@ -343,20 +343,23 @@ func (c *Config) GenerateModules(copyright, customEnvVarPrefix string) error {
 			compSrcDir := filepath.Join(stackBasedir, "src")
 			targetDir := ""
 			listSrcDirs, err := ioutil.ReadDir(compSrcDir)
-			if err != nil {
-				return fmt.Errorf("unable to get content of %s: %w", compSrcDir, err)
-			}
-			for _, entry := range listSrcDirs {
-				if strings.Contains(entry.Name(), softwareComponent.Name) {
-					targetDir = entry.Name()
+			if err == nil {
+				// The stack may not have a source directory, for instance when the stack is imported
+				// rather than build locally.
+				// If the source directory does exist, we set some optional additional environment
+				// variables.
+				for _, entry := range listSrcDirs {
+					if strings.Contains(entry.Name(), softwareComponent.Name) {
+						targetDir = entry.Name()
+					}
 				}
+				if targetDir == "" {
+					return fmt.Errorf("unable to find build directory from %s: %w", compSrcDir, err)
+				}
+				compSrcDirVarName := strings.ToUpper(softwareComponent.Name) + "_BUILD_DIR"
+				compSrcDirVarValue := filepath.Join(compSrcDir, targetDir)
+				envVars[compSrcDirVarName] = compSrcDirVarValue
 			}
-			if targetDir == "" {
-				return fmt.Errorf("unable to find build directory from %s: %w", compSrcDir, err)
-			}
-			compSrcDirVarName := strings.ToUpper(softwareComponent.Name) + "_BUILD_DIR"
-			compSrcDirVarValue := filepath.Join(compSrcDir, targetDir)
-			envVars[compSrcDirVarName] = compSrcDirVarValue
 		}
 
 		// Prepend existing environment variables
