@@ -55,7 +55,8 @@ func autogen(cfg *Config) error {
 	}
 
 	// From here we know that an autogen script is present
-	if cfg.HasConfigure {
+	configureScriptPath := filepath.Join(cfg.Source, "configure")
+	if util.FileExists(configureScriptPath) {
 		log.Println("-> configure script already exists, skipping")
 		return nil
 	}
