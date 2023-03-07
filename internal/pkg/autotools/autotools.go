@@ -54,6 +54,12 @@ func autogen(cfg *Config) error {
 		return nil
 	}
 
+	// From here we know that an autogen script is present
+	if cfg.HasConfigure {
+		log.Println("-> configure script already exists, skipping")
+		return nil
+	}
+
 	var cmd advexec.Advcmd
 	cmd.BinPath = "./autogen.sh"
 	targetBin := filepath.Join(cfg.Source, "autogen.sh")
