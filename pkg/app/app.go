@@ -13,6 +13,9 @@ type SourceCode struct {
 
 	// Branch is the specific flavor of the code to use. Directly applicable to git for example
 	Branch string
+
+	// Command to execute before checking out a branch
+	BranchCheckoutPrelude string
 }
 
 // Info gathers information about a given application
