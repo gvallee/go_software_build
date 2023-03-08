@@ -27,13 +27,14 @@ type StackCfg struct {
 }
 
 type Component struct {
-	Name                string `json:"name"`
-	URL                 string `json:"URL"`
-	Branch              string `json:"branch"`
-	ConfigId            string `json:"configure_id"`
-	ConfigureDependency string `json:"configure_dependency"`
-	ConfigurePrelude    string `json:"configure_prelude"`
-	ConfigureParams     string `json:"configure_params"`
+	Name                  string `json:"name"`
+	URL                   string `json:"URL"`
+	Branch                string `json:"branch"`
+	BranchCheckoutPrelude string `json:"branch_checkout_prelude"`
+	ConfigId              string `json:"configure_id"`
+	ConfigureDependency   string `json:"configure_dependency"`
+	ConfigurePrelude      string `json:"configure_prelude"`
+	ConfigureParams       string `json:"configure_params"`
 }
 
 type StackDef struct {
@@ -184,6 +185,10 @@ func (c *Config) InstallStack() error {
 
 		if softwareComponents.ConfigurePrelude != "" {
 			b.App.AutotoolsCfg.ConfigurePreludeCmd = softwareComponents.ConfigurePrelude
+		}
+
+		if softwareComponents.BranchCheckoutPrelude != "" {
+			b.App.Source.BranchCheckoutPrelude = softwareComponents.BranchCheckoutPrelude
 		}
 
 		err := b.Load(true)

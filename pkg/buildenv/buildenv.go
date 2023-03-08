@@ -248,7 +248,6 @@ func (env *Info) gitCheckout(p *app.Info) error {
 		if err != nil {
 			return fmt.Errorf("command failed: %w - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
 		}
-
 	} else {
 		gitCloneCmd := exec.Command(gitBin, "clone", p.Source.URL)
 		log.Printf("Running from %s: %s clone %s\n", env.BuildDir, gitBin, p.Source.URL)
@@ -259,6 +258,24 @@ func (env *Info) gitCheckout(p *app.Info) error {
 		err = gitCloneCmd.Run()
 		if err != nil {
 			return fmt.Errorf("command failed: %w - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
+		}
+
+		if p.Source.BranchCheckoutPrelude != "" {
+			tokens := strings.Split(p.Source.BranchCheckoutPrelude, " ")
+			cmdBin, err := exec.LookPath(tokens[0])
+			if err != nil {
+				return fmt.Errorf("unable to run prelude before checking out the branch, cannot find %s", tokens[0])
+			}
+
+			gitCheckoutPreludeCmd := exec.Command(cmdBin, tokens[1:]...)
+			log.Printf("Running from %s: %s %s\n", env.BuildDir, cmdBin, strings.Join(tokens[1:], " "))
+			gitCheckoutPreludeCmd.Dir = filepath.Join(targetDir, repoName)
+			gitCheckoutPreludeCmd.Stderr = &stderr
+			gitCheckoutPreludeCmd.Stdout = &stdout
+			err = gitCheckoutPreludeCmd.Run()
+			if err != nil {
+				return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
+			}
 		}
 
 		if p.Source.Branch != "" {
