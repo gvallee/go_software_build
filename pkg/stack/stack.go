@@ -24,33 +24,93 @@ import (
 
 type StackCfg struct {
 	InstallDir string `json:"installDir"`
+	System     string `json:"system"`
+}
+
+type StacksCfg struct {
+	Configs []StackCfg
 }
 
 type Component struct {
-	Name                  string `json:"name"`
-	URL                   string `json:"URL"`
-	Branch                string `json:"branch"`
+	// Name of the software component, e.g., 'ompi'
+	Name string `json:"name"`
+
+	// URL to use to get the software component
+	URL string `json:"URL"`
+
+	// When applicable, i.e., with Git, which branch to use when getting the software component
+	Branch string `json:"branch"`
+
+	// Command to execute before getting the code from a branch. Can be used to get all the tags of a Git repository.
 	BranchCheckoutPrelude string `json:"branch_checkout_prelude"`
-	ConfigId              string `json:"configure_id"`
-	ConfigureDependency   string `json:"configure_dependency"`
-	ConfigurePrelude      string `json:"configure_prelude"`
-	ConfigureParams       string `json:"configure_params"`
+
+	// ConfigId presents the configure option to use by other components with a dependency, e.g., will result in `--with-<ConfigID>` when autotools end up being used
+	ConfigId string `json:"configure_id"`
+
+	// Dependency for the software component, must be the name of another component
+	ConfigureDependency string `json:"configure_dependency"`
+
+	// ConfigurePrelude is the command to execute before configuring the software component. Can be used to initialize Git submodules for example.
+	ConfigurePrelude string `json:"configure_prelude"`
+
+	// ConfigureParams represents the additional configure parameters
+	ConfigureParams string `json:"configure_params"`
 }
 
 type StackDef struct {
-	Name       string `json:"name"`
-	Type       string `json:"type"`
-	Components []Component
+	// Name of the stack
+	Name string `json:"name"`
+
+	// System targeted by the stack (e.g., host, dpu)
+	System string `json:"system"`
+
+	// Type of the stack, i.e., private or public
+	Type string `json:"type"`
+
+	// Components represents the list of components composing the stack
+	Components []Component `json:"components"`
 }
 
-type Config struct {
-	DefFilePath     string
-	ConfigFilePath  string
+type StacksDef struct {
+	Name   string     `json:"name"`
+	Stacks []StackDef `json:"stacks"`
+}
+
+type Stack struct {
 	Private         bool
-	loaded          bool
 	BuildEnv        []string
 	StackConfig     *StackCfg
 	StackDefinition *StackDef
+}
+
+type Config struct {
+	// DefFilePath is the path to the file defining the stack
+	DefFilePath string
+
+	// ConfigFilePath is the path to the file specifying the configuration of the stack
+	ConfigFilePath string
+
+	// Loaded specifies is the stack configuration is ready to be used or not, either through manual setting or parsing of configuration files.
+	Loaded bool
+
+	// Data represents all the details about the stack, including the data from the configuration files once they are parsed
+	Data Stack
+
+	// Map of all software components installed for the stack. The key is the name of the component and the value the directory where the component is installed
+	InstalledComponents map[string]string
+}
+
+type Stacks struct {
+	StacksDefFilePath string
+	ConfigFilePath    string
+
+	// Definitions is the list of stack definition, one for each stack to be deployed
+	Definitions *StacksDef
+
+	// Configs is the list of stack configuration, one for each stack to be deployed
+	Configs *StacksCfg
+	Loaded  bool
+	Data    []Stack
 }
 
 const (
@@ -67,8 +127,8 @@ func (c *Config) Load() error {
 	if err != nil {
 		return fmt.Errorf("unable to read the content of %s: %w", c.DefFilePath, err)
 	}
-	c.StackDefinition = new(StackDef)
-	err = json.Unmarshal(defContent, &c.StackDefinition)
+	c.Data.StackDefinition = new(StackDef)
+	err = json.Unmarshal(defContent, &c.Data.StackDefinition)
 	if err != nil {
 		return fmt.Errorf("unable to unmarshal content of %s: %w", c.DefFilePath, err)
 	}
@@ -81,12 +141,50 @@ func (c *Config) Load() error {
 	if err != nil {
 		return fmt.Errorf("unable to read the content of %s: %w", c.ConfigFilePath, err)
 	}
-	c.StackConfig = new(StackCfg)
-	err = json.Unmarshal(cfgContent, &c.StackConfig)
+	c.Data.StackConfig = new(StackCfg)
+	err = json.Unmarshal(cfgContent, &c.Data.StackConfig)
 	if err != nil {
 		return fmt.Errorf("unable to unmarshal content of %s: %w", c.ConfigFilePath, err)
 	}
-	c.loaded = true
+	c.Loaded = true
+	return nil
+}
+
+func (s *Stacks) Load() error {
+	// unmarshale the two configuration files
+	defFile, err := os.Open(s.StacksDefFilePath)
+	if err != nil {
+		return fmt.Errorf("unable to open %s: %w", s.StacksDefFilePath, err)
+	}
+	defContent, err := ioutil.ReadAll(defFile)
+	if err != nil {
+		return fmt.Errorf("unable to read the content of %s: %w", s.StacksDefFilePath, err)
+	}
+	s.Definitions = new(StacksDef)
+	err = json.Unmarshal(defContent, &s.Definitions)
+	if err != nil {
+		return fmt.Errorf("unable to unmarshal content of %s: %w", s.StacksDefFilePath, err)
+	}
+
+	if s.ConfigFilePath != "" {
+		cfgFile, err := os.Open(s.ConfigFilePath)
+		if err != nil {
+			return fmt.Errorf("unable to open %s: %w", s.ConfigFilePath, err)
+		}
+		cfgContent, err := ioutil.ReadAll(cfgFile)
+		if err != nil {
+			return fmt.Errorf("unable to read the content of %s: %w", s.ConfigFilePath, err)
+		}
+		s.Configs = new(StacksCfg)
+		err = json.Unmarshal(cfgContent, &s.Configs)
+
+		if err != nil {
+			return fmt.Errorf("unable to unmarshal content of %s: %w", s.ConfigFilePath, err)
+		}
+	} else {
+		log.Printf("Definition file not defined, skipping...")
+	}
+	s.Loaded = true
 	return nil
 }
 
@@ -97,29 +195,29 @@ func (c *Config) InstallStack() error {
 	// A map of all the identifiers used to configure the different components with dependencies
 	configIds := make(map[string]string)
 
-	if !c.loaded {
+	if !c.Loaded {
 		err := c.Load()
 		if err != nil {
 			return fmt.Errorf("unable to load configuration: %w", err)
 		}
 	}
 
-	if c.StackDefinition.Type == "private" && c.Private {
+	if c.Data.StackDefinition.Type == "private" && c.Data.Private {
 		return fmt.Errorf("you are trying to install a private stack on a public system, which is strictly prohibited! Please use the -private option if you are on a private system to deploy the target stack")
 	}
 
-	if !util.PathExists(c.StackConfig.InstallDir) {
-		err := os.MkdirAll(c.StackConfig.InstallDir, defaultPermission)
+	if !util.PathExists(c.Data.StackConfig.InstallDir) {
+		err := os.MkdirAll(c.Data.StackConfig.InstallDir, defaultPermission)
 		if err != nil {
-			return fmt.Errorf("unable to create installation directory %s: %w", c.StackConfig.InstallDir, err)
+			return fmt.Errorf("unable to create installation directory %s: %w", c.Data.StackConfig.InstallDir, err)
 		}
 	}
 
-	for _, softwareComponents := range c.StackDefinition.Components {
+	for _, softwareComponents := range c.Data.StackDefinition.Components {
 		// Set a builder
 		b := new(builder.Builder)
 
-		stackBasedir := filepath.Join(c.StackConfig.InstallDir, c.StackDefinition.Name)
+		stackBasedir := filepath.Join(c.Data.StackConfig.InstallDir, c.Data.StackDefinition.Name)
 		if !util.PathExists(stackBasedir) {
 			err := os.MkdirAll(stackBasedir, defaultPermission)
 			if err != nil {
@@ -130,7 +228,7 @@ func (c *Config) InstallStack() error {
 		b.Env.InstallDir = filepath.Join(stackBasedir, "install")
 		b.Env.BuildDir = filepath.Join(stackBasedir, "build")
 		b.Env.SrcDir = filepath.Join(stackBasedir, "src")
-		b.Env.Env = c.BuildEnv
+		b.Env.Env = c.Data.BuildEnv
 
 		if !util.PathExists(b.Env.ScratchDir) {
 			err := os.MkdirAll(b.Env.ScratchDir, defaultPermission)
@@ -201,11 +299,18 @@ func (c *Config) InstallStack() error {
 			return fmt.Errorf("unable to install %s: %w", softwareComponents.Name, res.Err)
 		}
 
-		installedComponents[softwareComponents.Name] = filepath.Join(b.Env.InstallDir, softwareComponents.Name)
 		if softwareComponents.ConfigId != "" {
 			configIds[softwareComponents.Name] = softwareComponents.ConfigId
 		}
-		log.Printf("-> %s was successfully installed in %s", softwareComponents.Name, b.Env.SrcDir)
+
+		// Track what was installed, both locally and globally
+		compInstallDir := filepath.Join(b.Env.InstallDir, softwareComponents.Name)
+		installedComponents[softwareComponents.Name] = compInstallDir
+		if c.InstalledComponents == nil {
+			c.InstalledComponents = make(map[string]string)
+		}
+		c.InstalledComponents[softwareComponents.Name] = compInstallDir
+		log.Printf("-> %s was successfully installed in %s", softwareComponents.Name, compInstallDir)
 	}
 
 	return nil
@@ -217,7 +322,7 @@ func (c *Config) Export() error {
 		return fmt.Errorf("c.Load() failed: %w", err)
 	}
 
-	stackBasedir := filepath.Join(c.StackConfig.InstallDir, c.StackDefinition.Name)
+	stackBasedir := filepath.Join(c.Data.StackConfig.InstallDir, c.Data.StackDefinition.Name)
 	if !util.PathExists(stackBasedir) {
 		return fmt.Errorf("%s does not exist", stackBasedir)
 	}
@@ -227,7 +332,7 @@ func (c *Config) Export() error {
 		return fmt.Errorf("%s does not exist", installDir)
 	}
 
-	tarballFilename := c.StackDefinition.Name + ".tar.bz2"
+	tarballFilename := c.Data.StackDefinition.Name + ".tar.bz2"
 	tarBin, err := exec.LookPath("tar")
 	if err != nil {
 		return fmt.Errorf("tar is not available: %w", err)
@@ -252,7 +357,7 @@ func (c *Config) Import(filePath string) error {
 		return fmt.Errorf("c.Load() failed: %w", err)
 	}
 
-	stackBasedir := filepath.Join(c.StackConfig.InstallDir, c.StackDefinition.Name)
+	stackBasedir := filepath.Join(c.Data.StackConfig.InstallDir, c.Data.StackDefinition.Name)
 	if !util.PathExists(stackBasedir) {
 		err := os.MkdirAll(stackBasedir, defaultPermission)
 		if err != nil {
@@ -284,7 +389,7 @@ func (c *Config) GenerateModules(copyright, customEnvVarPrefix string) error {
 		return fmt.Errorf("c.Load() failed: %w", err)
 	}
 
-	stackBasedir := filepath.Join(c.StackConfig.InstallDir, c.StackDefinition.Name)
+	stackBasedir := filepath.Join(c.Data.StackConfig.InstallDir, c.Data.StackDefinition.Name)
 	if !util.PathExists(stackBasedir) {
 		return fmt.Errorf("stack base directory %s does not exist", stackBasedir)
 	}
@@ -297,7 +402,7 @@ func (c *Config) GenerateModules(copyright, customEnvVarPrefix string) error {
 		}
 	}
 
-	for _, softwareComponent := range c.StackDefinition.Components {
+	for _, softwareComponent := range c.Data.StackDefinition.Components {
 		var requires []string
 		vars := make(map[string]string)
 		envVars := make(map[string]string)
@@ -396,5 +501,29 @@ func (c *Config) GenerateModules(copyright, customEnvVarPrefix string) error {
 	}
 
 	fmt.Printf("modules successfully creates, to use them: module use %s\n", modulefileDir)
+	return nil
+}
+
+func (s *Stacks) Install(stackConfigs StacksCfg) error {
+	for _, curStack := range s.Data {
+		c := new(Config)
+
+		// Find the corresponding configuration
+		for _, stackConfig := range stackConfigs.Configs {
+			if stackConfig.System == curStack.StackDefinition.System {
+				c.Data.StackConfig = &stackConfig
+			}
+		}
+
+		c.Data.StackConfig = curStack.StackConfig
+		c.Data.StackDefinition = curStack.StackDefinition
+		c.Data.Private = curStack.Private
+		c.Loaded = true
+
+		err := c.InstallStack()
+		if err != nil {
+			return fmt.Errorf("unable to install stack %s: %w", curStack.StackDefinition.Name, err)
+		}
+	}
 	return nil
 }
