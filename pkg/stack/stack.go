@@ -117,6 +117,20 @@ const (
 	defaultPermission = 0775
 )
 
+func getComponentsPathEnv(env []string, cfg *Config) []string {
+	var compsEnv []string
+	if env != nil {
+		compsEnv = append(compsEnv, env...)
+	}
+	for _, compDir := range cfg.InstalledComponents {
+		compBinPath := filepath.Join(compDir, "bin")
+		if util.PathExists(compBinPath) {
+			compsEnv = append(compsEnv, compBinPath)
+		}
+	}
+	return compsEnv
+}
+
 func (c *Config) Load() error {
 	// unmarshale the two configuration files
 	defFile, err := os.Open(c.DefFilePath)
@@ -515,10 +529,15 @@ func (s *Stacks) Install(stackConfigs StacksCfg) error {
 			}
 		}
 
+		// Finish to define the current stack to install
 		c.Data.StackConfig = curStack.StackConfig
 		c.Data.StackDefinition = curStack.StackDefinition
 		c.Data.Private = curStack.Private
 		c.Loaded = true
+
+		// Make sure we can use whatever was already installed
+		compsPathEnv := getComponentsPathEnv(nil, c)
+		c.Data.BuildEnv = append(c.Data.BuildEnv, compsPathEnv...)
 
 		err := c.InstallStack()
 		if err != nil {
