@@ -27,10 +27,6 @@ type StackCfg struct {
 	System     string `json:"system"`
 }
 
-type StacksCfg struct {
-	Configs []StackCfg
-}
-
 type Component struct {
 	// Name of the software component, e.g., 'ompi'
 	Name string `json:"name"`
@@ -71,11 +67,6 @@ type StackDef struct {
 	Components []Component `json:"components"`
 }
 
-type StacksDef struct {
-	Name   string     `json:"name"`
-	Stacks []StackDef `json:"stacks"`
-}
-
 type Stack struct {
 	Private         bool
 	BuildEnv        []string
@@ -98,19 +89,6 @@ type Config struct {
 
 	// Map of all software components installed for the stack. The key is the name of the component and the value the directory where the component is installed
 	InstalledComponents map[string]string
-}
-
-type Stacks struct {
-	StacksDefFilePath string
-	ConfigFilePath    string
-
-	// Definitions is the list of stack definition, one for each stack to be deployed
-	Definitions *StacksDef
-
-	// Configs is the list of stack configuration, one for each stack to be deployed
-	Configs *StacksCfg
-	Loaded  bool
-	Data    []Stack
 }
 
 const (
@@ -150,42 +128,9 @@ func (c *Config) Load() error {
 	return nil
 }
 
-func (s *Stacks) Load() error {
-	// unmarshale the two configuration files
-	defFile, err := os.Open(s.StacksDefFilePath)
-	if err != nil {
-		return fmt.Errorf("unable to open %s: %w", s.StacksDefFilePath, err)
-	}
-	defContent, err := ioutil.ReadAll(defFile)
-	if err != nil {
-		return fmt.Errorf("unable to read the content of %s: %w", s.StacksDefFilePath, err)
-	}
-	s.Definitions = new(StacksDef)
-	err = json.Unmarshal(defContent, &s.Definitions)
-	if err != nil {
-		return fmt.Errorf("unable to unmarshal content of %s: %w", s.StacksDefFilePath, err)
-	}
-
-	if s.ConfigFilePath != "" {
-		cfgFile, err := os.Open(s.ConfigFilePath)
-		if err != nil {
-			return fmt.Errorf("unable to open %s: %w", s.ConfigFilePath, err)
-		}
-		cfgContent, err := ioutil.ReadAll(cfgFile)
-		if err != nil {
-			return fmt.Errorf("unable to read the content of %s: %w", s.ConfigFilePath, err)
-		}
-		s.Configs = new(StacksCfg)
-		err = json.Unmarshal(cfgContent, &s.Configs)
-
-		if err != nil {
-			return fmt.Errorf("unable to unmarshal content of %s: %w", s.ConfigFilePath, err)
-		}
-	} else {
-		log.Printf("Definition file not defined, skipping...")
-	}
-	s.Loaded = true
-	return nil
+func createNewPathForComp(compBinDir string) string {
+	existingPath := os.Getenv("PATH")
+	return "PATH=" + compBinDir + ":" + existingPath + ":$PATH"
 }
 
 func (c *Config) InstallStack() error {
@@ -310,6 +255,38 @@ func (c *Config) InstallStack() error {
 			c.InstalledComponents = make(map[string]string)
 		}
 		c.InstalledComponents[softwareComponents.Name] = compInstallDir
+
+		// If the component has binaries, we update PATH accordingly so we can
+		// benefit from them as we progress installing the stack, i.e., handle
+		// dependencies between components of the stack
+		compBinDir := filepath.Join(compInstallDir, "bin")
+		if util.PathExists(compBinDir) {
+			if len(c.Data.BuildEnv) == 0 {
+				// No build environment; create a new environment
+				pathEnvStr := createNewPathForComp(compBinDir)
+				c.Data.BuildEnv = append(c.Data.BuildEnv, pathEnvStr)
+			} else {
+				// A build environment already exists and may include a specific PATH
+
+				// Do we have a PATH env already?
+				pathFound := false
+				for idx, envvar := range c.Data.BuildEnv {
+					tokens := strings.Split(envvar, "=")
+					if tokens[0] == "PATH" {
+						newPath := "PATH=" + compBinDir + ":" + tokens[1]
+						c.Data.BuildEnv[idx] = newPath
+						pathFound = true
+						break
+					}
+				}
+				if pathFound == false {
+					// We can set a new one
+					pathEnvStr := createNewPathForComp(compBinDir)
+					c.Data.BuildEnv = append(c.Data.BuildEnv, pathEnvStr)
+				}
+			}
+		}
+
 		log.Printf("-> %s was successfully installed in %s", softwareComponents.Name, compInstallDir)
 	}
 
@@ -501,29 +478,5 @@ func (c *Config) GenerateModules(copyright, customEnvVarPrefix string) error {
 	}
 
 	fmt.Printf("modules successfully creates, to use them: module use %s\n", modulefileDir)
-	return nil
-}
-
-func (s *Stacks) Install(stackConfigs StacksCfg) error {
-	for _, curStack := range s.Data {
-		c := new(Config)
-
-		// Find the corresponding configuration
-		for _, stackConfig := range stackConfigs.Configs {
-			if stackConfig.System == curStack.StackDefinition.System {
-				c.Data.StackConfig = &stackConfig
-			}
-		}
-
-		c.Data.StackConfig = curStack.StackConfig
-		c.Data.StackDefinition = curStack.StackDefinition
-		c.Data.Private = curStack.Private
-		c.Loaded = true
-
-		err := c.InstallStack()
-		if err != nil {
-			return fmt.Errorf("unable to install stack %s: %w", curStack.StackDefinition.Name, err)
-		}
-	}
 	return nil
 }
