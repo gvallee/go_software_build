@@ -256,34 +256,36 @@ func (c *Config) InstallStack() error {
 		}
 		c.InstalledComponents[softwareComponents.Name] = compInstallDir
 
+		// If the component has binaries, we update PATH accordingly so we can
+		// benefit from them as we progress installing the stack, i.e., handle
+		// dependencies between components of the stack
 		compBinDir := filepath.Join(compInstallDir, "bin")
 		if util.PathExists(compBinDir) {
-			fmt.Printf("[DBG] Adding %s to PATH\n", compBinDir)
-		}
-
-		if len(c.Data.BuildEnv) == 0 {
-			// Create a new environment
-			pathEnvStr := createNewPathForComp(compBinDir)
-			c.Data.BuildEnv = append(c.Data.BuildEnv, pathEnvStr)
-		} else {
-			// Do we have a PATH env already?
-			pathFound := false
-			for idx, envvar := range c.Data.BuildEnv {
-				tokens := strings.Split(envvar, "=")
-				if tokens[0] == "PATH" {
-					newPath := "PATH=" + compBinDir + ":" + tokens[1]
-					c.Data.BuildEnv[idx] = newPath
-					pathFound = true
-					break
-				}
-			}
-			if pathFound == false {
-				// We can set a new one
+			if len(c.Data.BuildEnv) == 0 {
+				// No build environment; create a new environment
 				pathEnvStr := createNewPathForComp(compBinDir)
 				c.Data.BuildEnv = append(c.Data.BuildEnv, pathEnvStr)
+			} else {
+				// A build environment already exists and may include a specific PATH
+
+				// Do we have a PATH env already?
+				pathFound := false
+				for idx, envvar := range c.Data.BuildEnv {
+					tokens := strings.Split(envvar, "=")
+					if tokens[0] == "PATH" {
+						newPath := "PATH=" + compBinDir + ":" + tokens[1]
+						c.Data.BuildEnv[idx] = newPath
+						pathFound = true
+						break
+					}
+				}
+				if pathFound == false {
+					// We can set a new one
+					pathEnvStr := createNewPathForComp(compBinDir)
+					c.Data.BuildEnv = append(c.Data.BuildEnv, pathEnvStr)
+				}
 			}
 		}
-		fmt.Printf("[DBG] Env: %s\n", strings.Join(c.Data.BuildEnv, "\n"))
 
 		log.Printf("-> %s was successfully installed in %s", softwareComponents.Name, compInstallDir)
 	}
