@@ -145,7 +145,7 @@ func (c *Config) Load() error {
 
 func createNewPathForComp(compBinDir string) string {
 	existingPath := os.Getenv("PATH")
-	return "PATH="+compBinDir+":"+existingPath+":$PATH"
+	return "PATH=" + compBinDir + ":" + existingPath + ":$PATH"
 }
 
 func (c *Config) InstallStack() error {
@@ -286,7 +286,7 @@ func (c *Config) InstallStack() error {
 			for idx, envvar := range c.Data.BuildEnv {
 				tokens := strings.Split(envvar, "=")
 				if tokens[0] == "PATH" {
-					newPath := "PATH="+compBinDir+":"+tokens[1]
+					newPath := "PATH=" + compBinDir + ":" + tokens[1]
 					c.Data.BuildEnv[idx] = newPath
 					pathFound = true
 					break
