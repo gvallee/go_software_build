@@ -51,6 +51,9 @@ type Component struct {
 
 	// ConfigureParams represents the additional configure parameters
 	ConfigureParams string `json:"configure_params"`
+
+	// Environment to use while building the component
+	BuildEnv string `json:"build_env"`
 }
 
 type StackDef struct {
@@ -125,6 +128,7 @@ func (c *Config) Load() error {
 		return fmt.Errorf("unable to unmarshal content of %s: %w", c.ConfigFilePath, err)
 	}
 	c.Loaded = true
+
 	return nil
 }
 
@@ -158,7 +162,7 @@ func (c *Config) InstallStack() error {
 		}
 	}
 
-	for _, softwareComponents := range c.Data.StackDefinition.Components {
+	for _, softwareComponent := range c.Data.StackDefinition.Components {
 		// Set a builder
 		b := new(builder.Builder)
 
@@ -173,7 +177,9 @@ func (c *Config) InstallStack() error {
 		b.Env.InstallDir = filepath.Join(stackBasedir, "install")
 		b.Env.BuildDir = filepath.Join(stackBasedir, "build")
 		b.Env.SrcDir = filepath.Join(stackBasedir, "src")
-		b.Env.Env = c.Data.BuildEnv
+		customEnv := strings.Split(softwareComponent.BuildEnv, " ")
+		b.Env.Env = customEnv
+		b.Env.Env = append(b.Env.Env, c.Data.BuildEnv...)
 
 		if !util.PathExists(b.Env.ScratchDir) {
 			err := os.MkdirAll(b.Env.ScratchDir, defaultPermission)
@@ -203,13 +209,13 @@ func (c *Config) InstallStack() error {
 			}
 		}
 
-		log.Printf("-> Installing %s", softwareComponents.Name)
-		b.App.Name = softwareComponents.Name
-		b.App.Source.URL = softwareComponents.URL
-		b.App.Source.Branch = softwareComponents.Branch
+		log.Printf("-> Installing %s", softwareComponent.Name)
+		b.App.Name = softwareComponent.Name
+		b.App.Source.URL = softwareComponent.URL
+		b.App.Source.Branch = softwareComponent.Branch
 
-		if softwareComponents.ConfigureDependency != "" {
-			deps := strings.Split(softwareComponents.ConfigureDependency, ",")
+		if softwareComponent.ConfigureDependency != "" {
+			deps := strings.Split(softwareComponent.ConfigureDependency, ",")
 			for _, dep := range deps {
 				ref := dep
 				_, ok := configIds[dep]
@@ -221,17 +227,17 @@ func (c *Config) InstallStack() error {
 			}
 		}
 
-		if softwareComponents.ConfigureParams != "" {
-			args := strings.Split(softwareComponents.ConfigureParams, " ")
+		if softwareComponent.ConfigureParams != "" {
+			args := strings.Split(softwareComponent.ConfigureParams, " ")
 			b.App.AutotoolsCfg.ExtraConfigureArgs = append(b.App.AutotoolsCfg.ExtraConfigureArgs, args...)
 		}
 
-		if softwareComponents.ConfigurePrelude != "" {
-			b.App.AutotoolsCfg.ConfigurePreludeCmd = softwareComponents.ConfigurePrelude
+		if softwareComponent.ConfigurePrelude != "" {
+			b.App.AutotoolsCfg.ConfigurePreludeCmd = softwareComponent.ConfigurePrelude
 		}
 
-		if softwareComponents.BranchCheckoutPrelude != "" {
-			b.App.Source.BranchCheckoutPrelude = softwareComponents.BranchCheckoutPrelude
+		if softwareComponent.BranchCheckoutPrelude != "" {
+			b.App.Source.BranchCheckoutPrelude = softwareComponent.BranchCheckoutPrelude
 		}
 
 		err := b.Load(true)
@@ -241,20 +247,20 @@ func (c *Config) InstallStack() error {
 
 		res := b.Install()
 		if res.Err != nil {
-			return fmt.Errorf("unable to install %s: %w", softwareComponents.Name, res.Err)
+			return fmt.Errorf("unable to install %s: %w", softwareComponent.Name, res.Err)
 		}
 
-		if softwareComponents.ConfigId != "" {
-			configIds[softwareComponents.Name] = softwareComponents.ConfigId
+		if softwareComponent.ConfigId != "" {
+			configIds[softwareComponent.Name] = softwareComponent.ConfigId
 		}
 
 		// Track what was installed, both locally and globally
-		compInstallDir := filepath.Join(b.Env.InstallDir, softwareComponents.Name)
-		installedComponents[softwareComponents.Name] = compInstallDir
+		compInstallDir := filepath.Join(b.Env.InstallDir, softwareComponent.Name)
+		installedComponents[softwareComponent.Name] = compInstallDir
 		if c.InstalledComponents == nil {
 			c.InstalledComponents = make(map[string]string)
 		}
-		c.InstalledComponents[softwareComponents.Name] = compInstallDir
+		c.InstalledComponents[softwareComponent.Name] = compInstallDir
 
 		// If the component has binaries, we update PATH accordingly so we can
 		// benefit from them as we progress installing the stack, i.e., handle
@@ -287,7 +293,7 @@ func (c *Config) InstallStack() error {
 			}
 		}
 
-		log.Printf("-> %s was successfully installed in %s", softwareComponents.Name, compInstallDir)
+		log.Printf("-> %s was successfully installed in %s", softwareComponent.Name, compInstallDir)
 	}
 
 	return nil
