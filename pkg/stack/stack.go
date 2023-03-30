@@ -95,21 +95,6 @@ const (
 	defaultPermission = 0775
 )
 
-func getComponentsPathEnv(env []string, cfg *Config) []string {
-	var compsEnv []string
-	if env != nil {
-		compsEnv = append(compsEnv, env...)
-	}
-	for _, compDir := range cfg.InstalledComponents {
-		compBinPath := filepath.Join(compDir, "bin")
-		if util.PathExists(compBinPath) {
-			compsEnv = append(compsEnv, compBinPath)
-			fmt.Printf("[DBG] %s added to path\n", compBinPath)
-		}
-	}
-	return compsEnv
-}
-
 func (c *Config) Load() error {
 	// unmarshale the two configuration files
 	defFile, err := os.Open(c.DefFilePath)
