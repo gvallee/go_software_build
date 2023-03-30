@@ -14,7 +14,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"strings"
 
 	"github.com/gvallee/go_exec/pkg/advexec"
 	"github.com/gvallee/go_software_build/internal/pkg/autotools"
