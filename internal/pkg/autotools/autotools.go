@@ -200,7 +200,10 @@ func (cfg *Config) Configure() error {
 		cmd.CmdArgs = cmdArgs
 	}
 	cmd.ExecDir = cfg.Source
-	cmd.Env = append(cmd.Env, cfg.ConfigureEnv...)
+	if len(cfg.ConfigureEnv) > 0 {
+		cmd.Env = append(cmd.Env, cfg.ConfigureEnv...)
+		log.Printf("-> configure environment: %s\n", strings.Join(cmd.Env, " "))
+	}
 	res := cmd.Run()
 	if res.Err != nil {
 		return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", res.Err, res.Stdout, res.Stderr)

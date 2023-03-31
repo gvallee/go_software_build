@@ -177,9 +177,13 @@ func (c *Config) InstallStack() error {
 		b.Env.InstallDir = filepath.Join(stackBasedir, "install")
 		b.Env.BuildDir = filepath.Join(stackBasedir, "build")
 		b.Env.SrcDir = filepath.Join(stackBasedir, "src")
-		customEnv := strings.Split(softwareComponent.BuildEnv, " ")
-		b.Env.Env = customEnv
-		b.Env.Env = append(b.Env.Env, c.Data.BuildEnv...)
+		if softwareComponent.BuildEnv != "" {
+			customEnv := strings.Split(softwareComponent.BuildEnv, " ")
+			b.Env.Env = customEnv
+		}
+		if len(c.Data.BuildEnv) > 0 {
+			b.Env.Env = append(b.Env.Env, c.Data.BuildEnv...)
+		}
 
 		if !util.PathExists(b.Env.ScratchDir) {
 			err := os.MkdirAll(b.Env.ScratchDir, defaultPermission)
