@@ -137,6 +137,41 @@ func createNewPathForComp(compBinDir string) string {
 	return "PATH=" + compBinDir + ":" + existingPath + ":$PATH"
 }
 
+// updateTestRefs parses the environment variables that need to be defined to compile
+// the software component and update any reference to other software components previously
+// installed.
+// For example, it is possible to express a reference to the software package foo in
+// a environment variable as follow:
+//		FOO_LIB_DIR=@foo_install_dir@/lib
+// in which case @foo_install_dir@ will be replaced by the actual path where the foo
+// package has been installed.
+// Only the install directory is supported at the moment.
+func updateTestRefs(token string, installedSoftwareComponents map[string]string) error {
+	startIdx := strings.Index(token, "@")
+	if startIdx == -1 {
+		return fmt.Errorf("unable to find start delimiter '@' in %s", token)
+	}
+	endIdx := strings.Index(token[startIdx+1:], "@")
+	if endIdx == -1 {
+		return fmt.Errorf("unable to find end delimiter '@' in %s", token)
+	}
+	endIdx += startIdx + 1
+	strToUpdate := token[startIdx+1 : endIdx]
+	nameDelimiter := strings.Index(strToUpdate, "_")
+	softwareComponentName := strToUpdate[:nameDelimiter]
+	ref := strToUpdate[nameDelimiter+1:]
+	for name, dir := range installedSoftwareComponents {
+		if name == softwareComponentName {
+			if ref == "install_dir" {
+				ref = dir
+			}
+			token = token[:startIdx] + ref + token[endIdx+1:]
+		}
+	}
+
+	return nil
+}
+
 func (c *Config) InstallStack() error {
 	// A map of all the installed components where the key of the component's name and the value the directory where it is installed
 	installedComponents := make(map[string]string)
@@ -179,6 +214,18 @@ func (c *Config) InstallStack() error {
 		b.Env.SrcDir = filepath.Join(stackBasedir, "src")
 		if softwareComponent.BuildEnv != "" {
 			customEnv := strings.Split(softwareComponent.BuildEnv, " ")
+
+			// Elements of the environment may refer to directories specific
+			// to other software components being installed. In such a case,
+			// we need to update the reference with the actual path
+			for _, e := range customEnv {
+				if strings.Contains(e, "@") {
+					err := updateTestRefs(e, c.InstalledComponents)
+					if err != nil {
+						return fmt.Errorf("updateTestRefs() failed: %w", err)
+					}
+				}
+			}
 			b.Env.Env = customEnv
 		}
 		if len(c.Data.BuildEnv) > 0 {
