@@ -96,6 +96,8 @@ type Config struct {
 
 const (
 	defaultPermission = 0775
+	RefStartDelimiter = "@ref:"
+	RefEndDelimiter   = "@"
 )
 
 func (c *Config) Load() error {
@@ -137,6 +139,45 @@ func createNewPathForComp(compBinDir string) string {
 	return "PATH=" + compBinDir + ":" + existingPath + ":$PATH"
 }
 
+// UpdateRefs updates all references to other components with the actual appropriate paths.
+// This enables references to directories that are known only after said software components
+// of the stack are actually installed.
+// It includes parsing the environment variables and run arguments that need to be defined
+// to respectively compile and run the software component and update any reference to other
+// software components previously installed.
+// For example, it is possible to express a reference to the software package foo in
+// a environment variable as follow:
+//		FOO_LIB_DIR=@ref:foo_install_dir@/lib
+// in which case @foo_install_dir@ will be replaced by the actual path where the foo
+// package has been installed.
+// Only the install directory is supported at the moment.
+func UpdateRefs(token string, installedSoftwareComponents map[string]string) (string, error) {
+	startIdx := strings.Index(token, RefStartDelimiter)
+	if startIdx == -1 {
+		return "", fmt.Errorf("unable to find start delimiter '%s' in %s", RefStartDelimiter, token)
+	}
+	endIdx := strings.Index(token[startIdx+len(RefStartDelimiter):], RefEndDelimiter)
+	if endIdx == -1 {
+		return "", fmt.Errorf("unable to find end delimiter '%s' in %s", RefEndDelimiter, token)
+	}
+	endIdx += startIdx + len(RefStartDelimiter)
+	strToUpdate := token[startIdx+len(RefStartDelimiter) : endIdx]
+	nameDelimiter := strings.Index(strToUpdate, "_")
+	softwareComponentName := strToUpdate[:nameDelimiter]
+	ref := strToUpdate[nameDelimiter+1:]
+	for name, dir := range installedSoftwareComponents {
+		if name == softwareComponentName {
+			if ref == "install_dir" {
+				ref = dir
+			}
+			token = token[:startIdx] + ref + token[endIdx+len(RefEndDelimiter):]
+		}
+	}
+
+	return token, nil
+}
+
+// InstallStack installs an entire stack based on its configuration.
 func (c *Config) InstallStack() error {
 	// A map of all the installed components where the key of the component's name and the value the directory where it is installed
 	installedComponents := make(map[string]string)
@@ -179,6 +220,19 @@ func (c *Config) InstallStack() error {
 		b.Env.SrcDir = filepath.Join(stackBasedir, "src")
 		if softwareComponent.BuildEnv != "" {
 			customEnv := strings.Split(softwareComponent.BuildEnv, " ")
+
+			// Elements of the environment may refer to directories specific
+			// to other software components being installed. In such a case,
+			// we need to update the reference with the actual path
+			for idx, e := range customEnv {
+				if strings.Contains(e, "@") {
+					var err error
+					customEnv[idx], err = UpdateRefs(e, c.InstalledComponents)
+					if err != nil {
+						return fmt.Errorf("updateTestRefs() failed: %w", err)
+					}
+				}
+			}
 			b.Env.Env = customEnv
 		}
 		if len(c.Data.BuildEnv) > 0 {
