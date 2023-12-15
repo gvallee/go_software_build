@@ -403,7 +403,7 @@ func (env *Info) download(p *app.Info) error {
 
 		log.Printf("* Executing from %s: %s %s", env.SrcDir, binPath, p.Source.URL)
 		var stdout, stderr bytes.Buffer
-		cmd := exec.Command(binPath, p.Source.URL)
+		cmd := exec.Command(binPath, "--no-check-certificate", p.Source.URL)
 		cmd.Dir = env.SrcDir
 		cmd.Stderr = &stderr
 		cmd.Stdout = &stdout
