@@ -22,9 +22,12 @@ import (
 	"github.com/gvallee/go_util/pkg/util"
 )
 
+// StackCfg represents the configuration of a stack
 type StackCfg struct {
+	// InstallDir is the directory where the stack is being installed
 	InstallDir string `json:"installDir"`
-	System     string `json:"system"`
+
+	System string `json:"system"`
 }
 
 type Component struct {
@@ -34,16 +37,16 @@ type Component struct {
 	// URL to use to get the software component
 	URL string `json:"URL"`
 
-	// When applicable, i.e., with Git, which branch to use when getting the software component
+	// Branch is, when applicable, i.e., with Git, which branch to use when getting the software component
 	Branch string `json:"branch"`
 
-	// Command to execute before getting the code from a branch. Can be used to get all the tags of a Git repository.
+	// BranchCheckoutPrelude is the command to execute before getting the code from a branch. Can be used to get all the tags of a Git repository.
 	BranchCheckoutPrelude string `json:"branch_checkout_prelude"`
 
 	// ConfigId presents the configure option to use by other components with a dependency, e.g., will result in `--with-<ConfigID>` when autotools end up being used
 	ConfigId string `json:"configure_id"`
 
-	// Dependency for the software component, must be the name of another component
+	// ConfigureDependency represents the dependencies for the software component, must be the name of another component
 	ConfigureDependency string `json:"configure_dependency"`
 
 	// ConfigurePrelude is the command to execute before configuring the software component. Can be used to initialize Git submodules for example.
@@ -52,8 +55,17 @@ type Component struct {
 	// ConfigureParams represents the additional configure parameters
 	ConfigureParams string `json:"configure_params"`
 
-	// Environment to use while building the component
+	// BuildEnv represents the environment to use while building the component
 	BuildEnv string `json:"build_env"`
+
+	// InstallDir is the absolute path to the directory where the component is installed
+	InstallDir string
+
+	// BuildDir is the absolute path to the directory where the component was built
+	BuildDir string
+
+	// SrcDir is the absolute path to the directory where the component's source code is
+	SrcDir string
 }
 
 type StackDef struct {
@@ -90,8 +102,14 @@ type Config struct {
 	// Data represents all the details about the stack, including the data from the configuration files once they are parsed
 	Data Stack
 
-	// Map of all software components installed for the stack. The key is the name of the component and the value the directory where the component is installed
+	// InstalledComponents is the map of all software components installed for the stack. The key is the name of the component and the value the directory where the component is installed
 	InstalledComponents map[string]string
+
+	// BuiltComponents is the map of all software components that have been built for the stack. The key is the name of the component and the value the directory where the component is built
+	BuiltComponents map[string]string
+
+	// SrcComponents is the map of all software components' source code for the stack. The key is the name of the component and the value the directory where the component's source code is
+	SrcComponents map[string]string
 }
 
 const (
@@ -99,6 +117,46 @@ const (
 	RefStartDelimiter = "@ref:"
 	RefEndDelimiter   = "@"
 )
+
+func GetCompBuildDir(stackBasedir string, compName string) (string, error) {
+	compBuildDir := filepath.Join(stackBasedir, "build", compName)
+	if util.PathExists(compBuildDir) {
+		// Figure out the actual directory that was used
+		targetDir := ""
+		list, err := ioutil.ReadDir(compBuildDir)
+		if err != nil {
+			return "", fmt.Errorf("unable to read content of %s: %w", compBuildDir, err)
+		}
+		for _, entry := range list {
+			if util.IsDir(filepath.Join(compBuildDir, entry.Name())) {
+				targetDir = entry.Name()
+				break
+			}
+		}
+		return filepath.Join(compBuildDir, targetDir), nil
+	}
+	return "", fmt.Errorf("unable to figure out the build directory")
+}
+
+func GetCompSrcDir(stackBasedir string, compName string) (string, error) {
+	compSrcDir := filepath.Join(stackBasedir, "src")
+	targetDir := ""
+	listSrcDirs, err := ioutil.ReadDir(compSrcDir)
+	if err == nil {
+		// The stack may not have a source directory, for instance when the stack is imported
+		// rather than build locally.
+		// If the source directory does exist, we set some optional additional environment
+		// variables.
+		for _, entry := range listSrcDirs {
+			if strings.Contains(entry.Name(), compName) {
+				targetDir = entry.Name()
+				break
+			}
+		}
+		return filepath.Join(compSrcDir, targetDir), nil
+	}
+	return "", fmt.Errorf("unable to figure out the source directory")
+}
 
 func (c *Config) Load() error {
 	// unmarshale the two configuration files
@@ -150,8 +208,11 @@ func createNewPathForComp(compBinDir string) string {
 //		FOO_LIB_DIR=@ref:foo_install_dir@/lib
 // in which case @foo_install_dir@ will be replaced by the actual path where the foo
 // package has been installed.
-// Only the install directory is supported at the moment.
-func UpdateRefs(token string, installedSoftwareComponents map[string]string) (string, error) {
+// The following references are supported:
+// - install_dir: installation directory,
+// - build_dir: where the build is,
+// - src_dir: where the source code is.
+func (c *Config) UpdateRefs(token string) (string, error) {
 	startIdx := strings.Index(token, RefStartDelimiter)
 	if startIdx == -1 {
 		return "", fmt.Errorf("unable to find start delimiter '%s' in %s", RefStartDelimiter, token)
@@ -165,10 +226,16 @@ func UpdateRefs(token string, installedSoftwareComponents map[string]string) (st
 	nameDelimiter := strings.Index(strToUpdate, "_")
 	softwareComponentName := strToUpdate[:nameDelimiter]
 	ref := strToUpdate[nameDelimiter+1:]
-	for name, dir := range installedSoftwareComponents {
-		if name == softwareComponentName {
+	for compName, _ := range c.InstalledComponents {
+		if compName == softwareComponentName {
 			if ref == "install_dir" {
-				ref = dir
+				ref = c.InstalledComponents[compName]
+			}
+			if ref == "build_dir" {
+				ref = c.BuiltComponents[compName]
+			}
+			if ref == "src_dir" {
+				ref = c.SrcComponents[compName]
 			}
 			token = token[:startIdx] + ref + token[endIdx+len(RefEndDelimiter):]
 		}
@@ -227,7 +294,7 @@ func (c *Config) InstallStack() error {
 			for idx, e := range customEnv {
 				if strings.Contains(e, "@") {
 					var err error
-					customEnv[idx], err = UpdateRefs(e, c.InstalledComponents)
+					customEnv[idx], err = c.UpdateRefs(e)
 					if err != nil {
 						return fmt.Errorf("updateTestRefs() failed: %w", err)
 					}
@@ -319,6 +386,24 @@ func (c *Config) InstallStack() error {
 			c.InstalledComponents = make(map[string]string)
 		}
 		c.InstalledComponents[softwareComponent.Name] = compInstallDir
+
+		compBuildDir, err := GetCompBuildDir(stackBasedir, softwareComponent.Name)
+		if err != nil {
+			return fmt.Errorf("unable to get build dir from component %s: %w", softwareComponent.Name, err)
+		}
+		if c.BuiltComponents == nil {
+			c.BuiltComponents = make(map[string]string)
+		}
+		c.BuiltComponents[softwareComponent.Name] = compBuildDir
+
+		compSrcDir, err := GetCompSrcDir(stackBasedir, softwareComponent.Name)
+		if err != nil {
+			return fmt.Errorf("unable to get source dir from component %s: %w", softwareComponent.Name, err)
+		}
+		if c.SrcComponents == nil {
+			c.SrcComponents = make(map[string]string)
+		}
+		c.SrcComponents[softwareComponent.Name] = compSrcDir
 
 		// If the component has binaries, we update PATH accordingly so we can
 		// benefit from them as we progress installing the stack, i.e., handle
@@ -470,45 +555,16 @@ func (c *Config) GenerateModules(copyright, customEnvVarPrefix string) error {
 		compBasedirVarValue := compInstallDir
 		envVars[compBasedirVarName] = compBasedirVarValue
 
-		compBuildDir := filepath.Join(stackBasedir, "build", softwareComponent.Name)
-		if util.PathExists(compBuildDir) {
-			// Figure out the actual directory that was used
-			list, err := ioutil.ReadDir(compBuildDir)
-			targetDir := ""
-			if err != nil {
-				return fmt.Errorf("unable to read content of %s: %w", compBuildDir, err)
-			}
-			for _, entry := range list {
-				if util.IsDir(filepath.Join(compBuildDir, entry.Name())) {
-					targetDir = entry.Name()
-					break
-				}
-			}
-			if targetDir == "" {
-				return fmt.Errorf("unable to find build directory from %s: %w", compBuildDir, err)
-			}
+		targetDir, err := GetCompBuildDir(stackBasedir, softwareComponent.Name)
+		if targetDir != "" && err == nil {
 			compBuildDirVarName := strings.ToUpper(softwareComponent.Name) + "_BUILD_DIR"
-			compBuildDirVarValue := filepath.Join(compBuildDir, targetDir)
+			compBuildDirVarValue := targetDir
 			envVars[compBuildDirVarName] = compBuildDirVarValue
 		} else {
-			compSrcDir := filepath.Join(stackBasedir, "src")
-			targetDir := ""
-			listSrcDirs, err := ioutil.ReadDir(compSrcDir)
-			if err == nil {
-				// The stack may not have a source directory, for instance when the stack is imported
-				// rather than build locally.
-				// If the source directory does exist, we set some optional additional environment
-				// variables.
-				for _, entry := range listSrcDirs {
-					if strings.Contains(entry.Name(), softwareComponent.Name) {
-						targetDir = entry.Name()
-					}
-				}
-				if targetDir == "" {
-					return fmt.Errorf("unable to find build directory from %s: %w", compSrcDir, err)
-				}
+			targetDir, err := GetCompSrcDir(stackBasedir, softwareComponent.Name)
+			if targetDir != "" && err == nil {
 				compSrcDirVarName := strings.ToUpper(softwareComponent.Name) + "_BUILD_DIR"
-				compSrcDirVarValue := filepath.Join(compSrcDir, targetDir)
+				compSrcDirVarValue := targetDir
 				envVars[compSrcDirVarName] = compSrcDirVarValue
 			}
 		}
@@ -535,7 +591,7 @@ func (c *Config) GenerateModules(copyright, customEnvVarPrefix string) error {
 			envLayout["PKG_CONFIG_PATH"] = append(envLayout["PKG_CONFIG_PATH"], compPkgDir)
 		}
 
-		err := module.Generate(modulefileDir, copyright, customEnvVarPrefix, softwareComponent.Name, requires, nil, vars, envVars, envLayout)
+		err = module.Generate(modulefileDir, copyright, customEnvVarPrefix, softwareComponent.Name, requires, nil, vars, envVars, envLayout)
 		if err != nil {
 			return fmt.Errorf("module.Generate() failed: %w", err)
 		}
