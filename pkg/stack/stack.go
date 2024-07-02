@@ -387,10 +387,10 @@ func (c *Config) InstallStack() error {
 		}
 		c.InstalledComponents[softwareComponent.Name] = compInstallDir
 
-		compBuildDir, err := GetCompBuildDir(stackBasedir, softwareComponent.Name)
-		if err != nil {
-			return fmt.Errorf("unable to get build dir from component %s: %w", softwareComponent.Name, err)
-		}
+		// Note: it is not required for components to have a build directory. For instance
+		// the code is compiled directly from the source directory when the component is
+		// packaged in the form of a tarball
+		compBuildDir, _ := GetCompBuildDir(stackBasedir, softwareComponent.Name)
 		if c.BuiltComponents == nil {
 			c.BuiltComponents = make(map[string]string)
 		}
@@ -555,8 +555,11 @@ func (c *Config) GenerateModules(copyright, customEnvVarPrefix string) error {
 		compBasedirVarValue := compInstallDir
 		envVars[compBasedirVarName] = compBasedirVarValue
 
-		targetDir, err := GetCompBuildDir(stackBasedir, softwareComponent.Name)
-		if targetDir != "" && err == nil {
+		// Note: it is not required for components to have a build directory. For instance
+		// the code is compiled directly from the source directory when the component is
+		// packaged in the form of a tarball
+		targetDir, _ := GetCompBuildDir(stackBasedir, softwareComponent.Name)
+		if targetDir != "" {
 			compBuildDirVarName := strings.ToUpper(softwareComponent.Name) + "_BUILD_DIR"
 			compBuildDirVarValue := targetDir
 			envVars[compBuildDirVarName] = compBuildDirVarValue
