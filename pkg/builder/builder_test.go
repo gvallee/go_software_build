@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gvallee/go_exec/pkg/advexec"
@@ -321,5 +322,73 @@ func TestCompile_failsWhenGetFails(t *testing.T) {
 	}
 	if err.Error() == "" {
 		t.Error("expected non-empty error message")
+	}
+}
+
+func TestCompile_setsBinPathFromInstallDir(t *testing.T) {
+	b, _ := setBuilder(t)
+
+	srcDir, err := ioutil.TempDir("", "builder_compile_src_")
+	if err != nil {
+		t.Fatalf("unable to create source directory: %s", err)
+	}
+	defer os.RemoveAll(srcDir)
+
+	binaryName := "fakebin"
+	srcBinary := filepath.Join(srcDir, binaryName)
+	if err := ioutil.WriteFile(srcBinary, []byte("#!/bin/sh\necho hello\n"), 0755); err != nil {
+		t.Fatalf("unable to create source binary: %s", err)
+	}
+
+	b.App.Name = "myapp"
+	b.App.BinName = binaryName
+	b.App.Source.URL = "file://" + srcDir
+	targetInstallDir := filepath.Join(b.Env.InstallDir, b.App.Name)
+	b.App.InstallCmd = "cp " + binaryName + " " + targetInstallDir
+
+	err = b.Compile()
+	if err != nil {
+		t.Fatalf("Compile() failed: %s", err)
+	}
+
+	expectedPath := filepath.Join(targetInstallDir, binaryName)
+	if b.App.BinPath != expectedPath {
+		t.Fatalf("BinPath is %s instead of %s", b.App.BinPath, expectedPath)
+	}
+	if !util.FileExists(expectedPath) {
+		t.Fatalf("expected binary %s does not exist", expectedPath)
+	}
+}
+
+func TestCompile_fallsBackToSrcDirBinPath(t *testing.T) {
+	b, _ := setBuilder(t)
+
+	srcDir, err := ioutil.TempDir("", "builder_compile_src_fallback_")
+	if err != nil {
+		t.Fatalf("unable to create source directory: %s", err)
+	}
+	defer os.RemoveAll(srcDir)
+
+	binaryName := "fallbackbin"
+	srcBinary := filepath.Join(srcDir, binaryName)
+	if err := ioutil.WriteFile(srcBinary, []byte("#!/bin/sh\necho fallback\n"), 0755); err != nil {
+		t.Fatalf("unable to create source binary: %s", err)
+	}
+
+	b.App.Name = "myapp2"
+	b.App.BinName = binaryName
+	b.App.Source.URL = "file://" + srcDir
+	b.App.InstallCmd = ""
+
+	err = b.Compile()
+	if err != nil {
+		t.Fatalf("Compile() failed: %s", err)
+	}
+
+	if !strings.HasSuffix(b.App.BinPath, filepath.Join(filepath.Base(srcDir), binaryName)) {
+		t.Fatalf("expected BinPath to fallback to source directory, got: %s", b.App.BinPath)
+	}
+	if !util.FileExists(b.App.BinPath) {
+		t.Fatalf("expected source binary %s does not exist", b.App.BinPath)
 	}
 }
