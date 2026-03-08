@@ -169,7 +169,7 @@ func (b *Builder) install(pkg *app.Info, env *buildenv.Info) advexec.Result {
 		var cmd advexec.Advcmd
 		cmd.BinPath = "cp"
 		cmd.CmdArgs = []string{"-rf", env.GetAppBuildDir(pkg), env.InstallDir}
-		res := cmd.Run()
+		res = cmd.Run()
 		if res.Err != nil {
 			return res
 		}
