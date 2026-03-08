@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+// Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 //
 // See LICENSE.txt for license information
 //
@@ -118,6 +118,9 @@ const (
 	RefEndDelimiter   = "@"
 )
 
+// GetCompBuildDir returns the build directory for the named component under the stack base directory.
+// stackBasedir is the root directory of the stack (e.g. InstallDir/StackName); compName is the component name.
+// It looks under stackBasedir/build/compName for a subdirectory and returns its path, or an error if not found.
 func GetCompBuildDir(stackBasedir string, compName string) (string, error) {
 	compBuildDir := filepath.Join(stackBasedir, "build", compName)
 	if util.PathExists(compBuildDir) {
@@ -133,11 +136,17 @@ func GetCompBuildDir(stackBasedir string, compName string) (string, error) {
 				break
 			}
 		}
+		if targetDir == "" {
+			return "", fmt.Errorf("unable to figure out the build directory for component %s under %s", compName, compBuildDir)
+		}
 		return filepath.Join(compBuildDir, targetDir), nil
 	}
-	return "", fmt.Errorf("unable to figure out the build directory")
+	return "", fmt.Errorf("unable to figure out the build directory for component %s under %s", compName, compBuildDir)
 }
 
+// GetCompSrcDir returns the source directory for the named component under the stack base directory.
+// stackBasedir is the root directory of the stack; compName is the component name.
+// It looks under stackBasedir/src for an entry whose name contains compName and returns that path, or an error if the src directory cannot be read.
 func GetCompSrcDir(stackBasedir string, compName string) (string, error) {
 	compSrcDir := filepath.Join(stackBasedir, "src")
 	targetDir := ""
@@ -153,17 +162,24 @@ func GetCompSrcDir(stackBasedir string, compName string) (string, error) {
 				break
 			}
 		}
+		if targetDir == "" {
+			return "", fmt.Errorf("unable to figure out the source directory for component %s under %s", compName, compSrcDir)
+		}
 		return filepath.Join(compSrcDir, targetDir), nil
 	}
-	return "", fmt.Errorf("unable to figure out the source directory")
+	return "", fmt.Errorf("unable to figure out the source directory for component %s under %s", compName, compSrcDir)
 }
 
+// Load reads and parses the stack definition and config files (DefFilePath and ConfigFilePath)
+// and populates c.Data.StackDefinition and c.Data.StackConfig. It sets c.Loaded to true on success.
+// It returns an error if either file cannot be opened, read, or unmarshaled as JSON.
 func (c *Config) Load() error {
 	// unmarshale the two configuration files
 	defFile, err := os.Open(c.DefFilePath)
 	if err != nil {
 		return fmt.Errorf("unable to open %s: %w", c.DefFilePath, err)
 	}
+	defer defFile.Close()
 	defContent, err := ioutil.ReadAll(defFile)
 	if err != nil {
 		return fmt.Errorf("unable to read the content of %s: %w", c.DefFilePath, err)
@@ -178,6 +194,7 @@ func (c *Config) Load() error {
 	if err != nil {
 		return fmt.Errorf("unable to open %s: %w", c.ConfigFilePath, err)
 	}
+	defer cfgFile.Close()
 	cfgContent, err := ioutil.ReadAll(cfgFile)
 	if err != nil {
 		return fmt.Errorf("unable to read the content of %s: %w", c.ConfigFilePath, err)
@@ -197,21 +214,22 @@ func createNewPathForComp(compBinDir string) string {
 	return "PATH=" + compBinDir + ":" + existingPath + ":$PATH"
 }
 
-// UpdateRefs updates all references to other components with the actual appropriate paths.
+// UpdateRefs replaces @ref:...@ placeholders in token with actual paths for installed stack components.
 // This enables references to directories that are known only after said software components
-// of the stack are actually installed.
-// It includes parsing the environment variables and run arguments that need to be defined
-// to respectively compile and run the software component and update any reference to other
-// software components previously installed.
-// For example, it is possible to express a reference to the software package foo in
-// a environment variable as follow:
-//		FOO_LIB_DIR=@ref:foo_install_dir@/lib
-// in which case @foo_install_dir@ will be replaced by the actual path where the foo
-// package has been installed.
+// of the stack are actually installed (e.g. in BuildEnv).
+//
+// For example, a reference to the software package foo in an environment variable:
+//
+//	FOO_LIB_DIR=@ref:foo_install_dir@/lib
+//
+// is replaced with the actual path where the foo package has been installed.
 // The following references are supported:
-// - install_dir: installation directory,
-// - build_dir: where the build is,
-// - src_dir: where the source code is.
+//   - install_dir: installation directory
+//   - build_dir: build directory
+//   - src_dir: source directory
+//
+// The segment between @ref: and @ must contain an underscore (e.g. foo_install_dir).
+// Returns an error if the placeholder format is invalid or the component/ref is unknown.
 func (c *Config) UpdateRefs(token string) (string, error) {
 	startIdx := strings.Index(token, RefStartDelimiter)
 	if startIdx == -1 {
@@ -224,27 +242,47 @@ func (c *Config) UpdateRefs(token string) (string, error) {
 	endIdx += startIdx + len(RefStartDelimiter)
 	strToUpdate := token[startIdx+len(RefStartDelimiter) : endIdx]
 	nameDelimiter := strings.Index(strToUpdate, "_")
+	if nameDelimiter == -1 {
+		return "", fmt.Errorf("reference must contain component name and ref type separated by '_' (e.g. foo_install_dir), got: %s", strToUpdate)
+	}
 	softwareComponentName := strToUpdate[:nameDelimiter]
 	ref := strToUpdate[nameDelimiter+1:]
-	for compName, _ := range c.InstalledComponents {
+	replaced := false
+	for compName := range c.InstalledComponents {
 		if compName == softwareComponentName {
-			if ref == "install_dir" {
+			switch ref {
+			case "install_dir":
 				ref = c.InstalledComponents[compName]
-			}
-			if ref == "build_dir" {
-				ref = c.BuiltComponents[compName]
-			}
-			if ref == "src_dir" {
-				ref = c.SrcComponents[compName]
+			case "build_dir":
+				resolvedBuildDir, ok := c.BuiltComponents[compName]
+				if !ok || resolvedBuildDir == "" {
+					return "", fmt.Errorf("unknown build directory for component %s", compName)
+				}
+				ref = resolvedBuildDir
+			case "src_dir":
+				resolvedSrcDir, ok := c.SrcComponents[compName]
+				if !ok || resolvedSrcDir == "" {
+					return "", fmt.Errorf("unknown source directory for component %s", compName)
+				}
+				ref = resolvedSrcDir
+			default:
+				return "", fmt.Errorf("unsupported reference type: %s", ref)
 			}
 			token = token[:startIdx] + ref + token[endIdx+len(RefEndDelimiter):]
+			replaced = true
+			break
 		}
+	}
+	if !replaced {
+		return "", fmt.Errorf("unable to resolve reference for component %s", softwareComponentName)
 	}
 
 	return token, nil
 }
 
-// InstallStack installs an entire stack based on its configuration.
+// InstallStack installs all components of the stack in order, resolving dependencies and build env refs.
+// It loads the stack config if not already loaded, creates the install/build/src directories as needed,
+// and runs the builder for each component. Export, Import, and GenerateModules depend on this having been run.
 func (c *Config) InstallStack() error {
 	// A map of all the installed components where the key of the component's name and the value the directory where it is installed
 	installedComponents := make(map[string]string)
@@ -397,13 +435,12 @@ func (c *Config) InstallStack() error {
 		c.BuiltComponents[softwareComponent.Name] = compBuildDir
 
 		compSrcDir, err := GetCompSrcDir(stackBasedir, softwareComponent.Name)
-		if err != nil {
-			return fmt.Errorf("unable to get source dir from component %s: %w", softwareComponent.Name, err)
+		if err == nil {
+			if c.SrcComponents == nil {
+				c.SrcComponents = make(map[string]string)
+			}
+			c.SrcComponents[softwareComponent.Name] = compSrcDir
 		}
-		if c.SrcComponents == nil {
-			c.SrcComponents = make(map[string]string)
-		}
-		c.SrcComponents[softwareComponent.Name] = compSrcDir
 
 		// If the component has binaries, we update PATH accordingly so we can
 		// benefit from them as we progress installing the stack, i.e., handle
@@ -442,6 +479,8 @@ func (c *Config) InstallStack() error {
 	return nil
 }
 
+// Export creates a tarball (StackName.tar.bz2) of the stack's install directory under the stack base directory.
+// The stack config must be loadable; the stack base and its install directory must already exist (e.g. after InstallStack).
 func (c *Config) Export() error {
 	err := c.Load()
 	if err != nil {
@@ -477,6 +516,8 @@ func (c *Config) Export() error {
 	return nil
 }
 
+// Import extracts a previously exported tarball (filePath) into the stack base directory.
+// The stack config must be loadable. The stack base directory is created if it does not exist.
 func (c *Config) Import(filePath string) error {
 	err := c.Load()
 	if err != nil {
@@ -509,6 +550,9 @@ func (c *Config) Import(filePath string) error {
 	return nil
 }
 
+// GenerateModules writes Environment Modules modulefiles for each stack component under stackBasedir/modulefiles.
+// copyright is included at the top of each file; customEnvVarPrefix is prepended to env var names when non-empty.
+// Requires the stack to be loaded and the stack base directory to exist (typically after InstallStack).
 func (c *Config) GenerateModules(copyright, customEnvVarPrefix string) error {
 	err := c.Load()
 	if err != nil {

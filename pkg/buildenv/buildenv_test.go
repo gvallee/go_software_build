@@ -1,4 +1,4 @@
-// Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+// Copyright (c) 2021-2026, NVIDIA CORPORATION. All rights reserved.
 // This software is licensed under a 3-clause BSD license. Please consult the
 // LICENSE.md file distributed with the sources of this project regarding your
 // rights to use or distribute this software.
@@ -236,5 +236,188 @@ func TestGetAppInstallDir(t *testing.T) {
 		if result != tt.expectedInstallDir {
 			t.Fatalf("GetAppInstallDir is %s instead of %s", result, tt.expectedInstallDir)
 		}
+	}
+}
+
+func TestGetAppBuildDir(t *testing.T) {
+	env := Info{BuildDir: "/tmp/build-root"}
+	a := app.Info{Name: "myapp", Source: app.SourceCode{URL: "https://example.com/myapp.tar.gz"}}
+
+	got := env.GetAppBuildDir(&a)
+	want := filepath.Join(env.BuildDir, a.Name)
+	if got != want {
+		t.Fatalf("GetAppBuildDir = %s, want %s", got, want)
+	}
+}
+
+func TestIsInstalled(t *testing.T) {
+	installRoot, err := ioutil.TempDir("", "buildenv_install_")
+	if err != nil {
+		t.Fatalf("unable to create temporary install root: %s", err)
+	}
+	defer os.RemoveAll(installRoot)
+
+	env := Info{InstallDir: installRoot}
+	a := app.Info{Name: "installed-app"}
+
+	if env.IsInstalled(&a) {
+		t.Fatal("IsInstalled should be false before install dir exists")
+	}
+
+	if err := os.MkdirAll(filepath.Join(installRoot, a.Name), 0755); err != nil {
+		t.Fatalf("unable to create app install dir: %s", err)
+	}
+
+	if !env.IsInstalled(&a) {
+		t.Fatal("IsInstalled should be true once install dir exists")
+	}
+}
+
+func TestGetEnvPathAndLDPath(t *testing.T) {
+	env := Info{InstallDir: "/opt/test"}
+
+	pathVal := env.GetEnvPath()
+	if !strings.HasPrefix(pathVal, "/opt/test/bin:") {
+		t.Fatalf("GetEnvPath() = %s, expected prefix /opt/test/bin:", pathVal)
+	}
+
+	ldPathVal := env.GetEnvLDPath()
+	if !strings.HasPrefix(ldPathVal, "/opt/test/lib:") {
+		t.Fatalf("GetEnvLDPath() = %s, expected prefix /opt/test/lib:", ldPathVal)
+	}
+}
+
+func TestLookPath(t *testing.T) {
+	tmpDir, err := ioutil.TempDir("", "buildenv_lookpath_")
+	if err != nil {
+		t.Fatalf("unable to create temporary directory: %s", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	binaryPath := filepath.Join(tmpDir, "mybin")
+	if err := ioutil.WriteFile(binaryPath, []byte("#!/bin/sh\n"), 0755); err != nil {
+		t.Fatalf("unable to create fake binary: %s", err)
+	}
+
+	env := Info{Env: []string{"PATH=" + tmpDir + ":/usr/bin"}}
+	resolved := env.lookPath("mybin")
+	if resolved != binaryPath {
+		t.Fatalf("lookPath returned %s instead of %s", resolved, binaryPath)
+	}
+
+	notFound := env.lookPath("missing-bin")
+	if notFound != "missing-bin" {
+		t.Fatalf("lookPath should return original name for missing binaries, got %s", notFound)
+	}
+}
+
+func TestInstall_noInstallCommand(t *testing.T) {
+	env := Info{}
+	a := app.Info{Name: "noop", InstallCmd: ""}
+
+	if err := env.Install(&a); err != nil {
+		t.Fatalf("Install() should succeed when InstallCmd is empty: %s", err)
+	}
+}
+
+func TestInstall_withCommand(t *testing.T) {
+	srcDir, err := ioutil.TempDir("", "buildenv_install_cmd_src_")
+	if err != nil {
+		t.Fatalf("unable to create source directory: %s", err)
+	}
+	defer os.RemoveAll(srcDir)
+
+	targetFile := filepath.Join(srcDir, "installed.txt")
+	env := Info{SrcDir: srcDir}
+	a := app.Info{Name: "cmdinstall", InstallCmd: "touch " + targetFile}
+
+	if err := env.Install(&a); err != nil {
+		t.Fatalf("Install() failed: %s", err)
+	}
+	if !util.FileExists(targetFile) {
+		t.Fatalf("expected file %s does not exist", targetFile)
+	}
+}
+
+func TestInitCreatesDirectories(t *testing.T) {
+	baseDir, err := ioutil.TempDir("", "buildenv_init_")
+	if err != nil {
+		t.Fatalf("unable to create base directory: %s", err)
+	}
+	defer os.RemoveAll(baseDir)
+
+	env := Info{
+		ScratchDir: filepath.Join(baseDir, "scratch"),
+		BuildDir:   filepath.Join(baseDir, "build"),
+		InstallDir: filepath.Join(baseDir, "install"),
+	}
+
+	if err := env.Init(); err != nil {
+		t.Fatalf("Init() failed: %s", err)
+	}
+
+	if !util.PathExists(env.ScratchDir) {
+		t.Fatalf("ScratchDir was not created: %s", env.ScratchDir)
+	}
+	if !util.PathExists(env.BuildDir) {
+		t.Fatalf("BuildDir was not created: %s", env.BuildDir)
+	}
+	if !util.PathExists(env.InstallDir) {
+		t.Fatalf("InstallDir was not created: %s", env.InstallDir)
+	}
+}
+
+func TestGetPathFromFileURL(t *testing.T) {
+	path, err := getPathFromFileURL("file:///tmp/archive.tar.gz")
+	if err != nil {
+		t.Fatalf("getPathFromFileURL() failed: %s", err)
+	}
+	if path != "/tmp/archive.tar.gz" {
+		t.Fatalf("unexpected path: %s", path)
+	}
+
+	if _, err := getPathFromFileURL("https://example.com/archive.tar.gz"); err == nil {
+		t.Fatal("expected error for non-file URL")
+	}
+
+	if _, err := getPathFromFileURL("file://"); err == nil {
+		t.Fatal("expected error for empty file URL path")
+	}
+}
+
+func TestCopyTarball(t *testing.T) {
+	buildDir, err := ioutil.TempDir("", "buildenv_copy_build_")
+	if err != nil {
+		t.Fatalf("unable to create build dir: %s", err)
+	}
+	defer os.RemoveAll(buildDir)
+
+	srcDir, err := ioutil.TempDir("", "buildenv_copy_src_")
+	if err != nil {
+		t.Fatalf("unable to create src dir: %s", err)
+	}
+	defer os.RemoveAll(srcDir)
+
+	srcTarball := filepath.Join(srcDir, "dummy.tar.gz")
+	if err := ioutil.WriteFile(srcTarball, []byte("dummy content"), 0644); err != nil {
+		t.Fatalf("unable to create source tarball: %s", err)
+	}
+
+	env := Info{BuildDir: buildDir}
+	a := app.Info{Name: "dummy", Source: app.SourceCode{URL: "file://" + srcTarball}}
+
+	if err := env.copyTarball(&a); err != nil {
+		t.Fatalf("copyTarball() failed: %s", err)
+	}
+
+	expectedPath := filepath.Join(buildDir, a.Name, filepath.Base(srcTarball))
+	if env.SrcPath != expectedPath {
+		t.Fatalf("SrcPath is %s instead of %s", env.SrcPath, expectedPath)
+	}
+	if env.SrcDir != filepath.Join(buildDir, a.Name) {
+		t.Fatalf("SrcDir is %s instead of %s", env.SrcDir, filepath.Join(buildDir, a.Name))
+	}
+	if !util.FileExists(expectedPath) {
+		t.Fatalf("expected copied tarball %s does not exist", expectedPath)
 	}
 }

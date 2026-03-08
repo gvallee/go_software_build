@@ -1,4 +1,4 @@
-// Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+// Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 // This software is licensed under a 3-clause BSD license. Please consult the
 // LICENSE.md file distributed with the sources of this project regarding your
 // rights to use or distribute this software.
@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -44,13 +45,25 @@ func Generate(path, copyright, customEnvVarPrefix, name string, requires []strin
 
 	content += "\n"
 
-	for varName, varValue := range vars {
+	varKeys := make([]string, 0, len(vars))
+	for varName := range vars {
+		varKeys = append(varKeys, varName)
+	}
+	sort.Strings(varKeys)
+	for _, varName := range varKeys {
+		varValue := vars[varName]
 		content += setKeyword + varName + " " + varValue + "\n"
 	}
 
 	content += "\n"
 
-	for varName, varValue := range envVars {
+	envVarKeys := make([]string, 0, len(envVars))
+	for varName := range envVars {
+		envVarKeys = append(envVarKeys, varName)
+	}
+	sort.Strings(envVarKeys)
+	for _, varName := range envVarKeys {
+		varValue := envVars[varName]
 		if customEnvVarPrefix == "" {
 			content += setenvKeyword + varName + " " + varValue + "\n"
 		} else {
@@ -64,9 +77,15 @@ func Generate(path, copyright, customEnvVarPrefix, name string, requires []strin
 
 	content += "\n"
 
-	for envvar, paths := range envLayout {
-		for _, path := range paths {
-			content += prependPathKeyword + envvar + " " + path + "\n"
+	envLayoutKeys := make([]string, 0, len(envLayout))
+	for envvar := range envLayout {
+		envLayoutKeys = append(envLayoutKeys, envvar)
+	}
+	sort.Strings(envLayoutKeys)
+	for _, envvar := range envLayoutKeys {
+		paths := envLayout[envvar]
+		for _, layoutPath := range paths {
+			content += prependPathKeyword + envvar + " " + layoutPath + "\n"
 		}
 	}
 

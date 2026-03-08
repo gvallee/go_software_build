@@ -1,5 +1,5 @@
 // Copyright (c) 2019, Sylabs Inc. All rights reserved.
-// Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+// Copyright (c) 2021-2026, NVIDIA CORPORATION. All rights reserved.
 // This software is licensed under a 3-clause BSD license. Please consult the
 // LICENSE.md file distributed with the sources of this project regarding your
 // rights to use or distribute this software.
@@ -169,7 +169,7 @@ func (b *Builder) install(pkg *app.Info, env *buildenv.Info) advexec.Result {
 		var cmd advexec.Advcmd
 		cmd.BinPath = "cp"
 		cmd.CmdArgs = []string{"-rf", env.GetAppBuildDir(pkg), env.InstallDir}
-		res := cmd.Run()
+		res = cmd.Run()
 		if res.Err != nil {
 			return res
 		}
@@ -345,10 +345,20 @@ func (b *Builder) Compile() error {
 		return fmt.Errorf("unable to install package: %s", err)
 	}
 
-	// todo: we do not have a good way to know if an app is actually install in InstallDir or
-	// if we must just use the binary in BuildDir. For now we assume that we use the binary in
-	// BuildDir.
-	b.App.BinPath = filepath.Join(buildEnv.SrcDir, b.App.BinName)
+	binaryCandidates := []string{
+		filepath.Join(buildEnv.InstallDir, "bin", b.App.BinName),
+		filepath.Join(buildEnv.InstallDir, b.App.BinName),
+		filepath.Join(buildEnv.BuildDir, b.App.BinName),
+		filepath.Join(buildEnv.SrcDir, b.App.BinName),
+	}
+
+	b.App.BinPath = binaryCandidates[len(binaryCandidates)-1]
+	for _, candidate := range binaryCandidates {
+		if util.FileExists(candidate) {
+			b.App.BinPath = candidate
+			break
+		}
+	}
 	log.Printf("-> Successfully created %s\n", b.App.BinPath)
 
 	return nil
