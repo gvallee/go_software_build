@@ -189,14 +189,19 @@ func (env *Info) copyTarball(p *app.Info) error {
 		return fmt.Errorf("invalid copyTarball() parameter(s)")
 	}
 
+	localPath, err := getPathFromFileURL(p.Source.URL)
+	if err != nil {
+		return fmt.Errorf("unable to parse local path from %s: %w", p.Source.URL, err)
+	}
+
 	// Figure out the name of the file if we do not already have it
 	if p.Tarball == "" {
-		p.Tarball = path.Base(p.Source.URL)
+		p.Tarball = path.Base(localPath)
 	}
 
 	targetDir := filepath.Join(env.BuildDir, p.Name)
 	if !util.PathExists(targetDir) {
-		err := os.MkdirAll(targetDir, defaultDirMode)
+		err = os.MkdirAll(targetDir, defaultDirMode)
 		if err != nil {
 			return err
 		}
@@ -206,8 +211,7 @@ func (env *Info) copyTarball(p *app.Info) error {
 	if util.FileExists(targetTarballPath) {
 		log.Printf("%s already exists, not copying", targetTarballPath)
 	} else {
-		// The begining of the URL starts with 'file://' which we do not want
-		err := util.CopyFile(p.Source.URL[7:], targetTarballPath)
+		err = util.CopyFile(localPath, targetTarballPath)
 		if err != nil {
 			return fmt.Errorf("cannot copy file %s to %s: %w", p.Source.URL, targetTarballPath, err)
 		}
@@ -317,8 +321,16 @@ func (env *Info) Get(p *app.Info) error {
 
 	switch urlFormat {
 	case util.FileURL:
-		path := p.Source.URL[7:]
-		if !util.IsDir(path) {
+		if env.BuildDir == "" {
+			return fmt.Errorf("env.BuildDir is undefined")
+		}
+
+		localPath, err := getPathFromFileURL(p.Source.URL)
+		if err != nil {
+			return fmt.Errorf("unable to parse local path from %s: %w", p.Source.URL, err)
+		}
+
+		if !util.IsDir(localPath) {
 			err := env.copyTarball(p)
 			if err != nil {
 				return fmt.Errorf("env.copyTarball() failed: %w", err)
@@ -340,14 +352,14 @@ func (env *Info) Get(p *app.Info) error {
 				return fmt.Errorf("cp command not available")
 			}
 			cmd.CmdArgs = append(cmd.CmdArgs, "-rf")
-			cmd.CmdArgs = append(cmd.CmdArgs, path)
+			cmd.CmdArgs = append(cmd.CmdArgs, localPath)
 			cmd.CmdArgs = append(cmd.CmdArgs, targetDir)
 			res := cmd.Run()
 			if res.Err != nil {
-				return fmt.Errorf("unable to copy %s into %s: %w, stdout: %s, stderr: %s", path, targetDir, res.Err, res.Stdout, res.Stderr)
+				return fmt.Errorf("unable to copy %s into %s: %w, stdout: %s, stderr: %s", localPath, targetDir, res.Err, res.Stdout, res.Stderr)
 			}
 
-			env.SrcPath = filepath.Join(targetDir, filepath.Base(p.Source.URL))
+			env.SrcPath = filepath.Join(targetDir, filepath.Base(localPath))
 			env.SrcDir = env.SrcPath
 		}
 	case util.HttpURL:
@@ -377,11 +389,11 @@ func (env *Info) download(p *app.Info) error {
 	}
 
 	if env.SrcDir == "" {
-		return fmt.Errorf("env.SrcPath is undefined")
+		return fmt.Errorf("env.SrcDir is undefined")
 	}
 
 	if !util.PathExists(env.SrcDir) {
-		err := os.Mkdir(env.SrcDir, defaultDirMode)
+		err := os.MkdirAll(env.SrcDir, defaultDirMode)
 		if err != nil {
 			return err
 		}
@@ -415,6 +427,20 @@ func (env *Info) download(p *app.Info) error {
 	env.SrcPath = targetFile
 
 	return nil
+}
+
+func getPathFromFileURL(url string) (string, error) {
+	const filePrefix = "file://"
+	if !strings.HasPrefix(url, filePrefix) {
+		return "", fmt.Errorf("unsupported file URL: %s", url)
+	}
+
+	localPath := strings.TrimPrefix(url, filePrefix)
+	if localPath == "" {
+		return "", fmt.Errorf("empty local path in file URL: %s", url)
+	}
+
+	return localPath, nil
 }
 
 func getNameFromFilename(filename string) string {
