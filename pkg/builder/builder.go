@@ -345,10 +345,20 @@ func (b *Builder) Compile() error {
 		return fmt.Errorf("unable to install package: %s", err)
 	}
 
-	// todo: we do not have a good way to know if an app is actually install in InstallDir or
-	// if we must just use the binary in BuildDir. For now we assume that we use the binary in
-	// BuildDir.
-	b.App.BinPath = filepath.Join(buildEnv.SrcDir, b.App.BinName)
+	binaryCandidates := []string{
+		filepath.Join(buildEnv.InstallDir, "bin", b.App.BinName),
+		filepath.Join(buildEnv.InstallDir, b.App.BinName),
+		filepath.Join(buildEnv.BuildDir, b.App.BinName),
+		filepath.Join(buildEnv.SrcDir, b.App.BinName),
+	}
+
+	b.App.BinPath = binaryCandidates[len(binaryCandidates)-1]
+	for _, candidate := range binaryCandidates {
+		if util.FileExists(candidate) {
+			b.App.BinPath = candidate
+			break
+		}
+	}
 	log.Printf("-> Successfully created %s\n", b.App.BinPath)
 
 	return nil
