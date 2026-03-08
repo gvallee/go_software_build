@@ -136,9 +136,12 @@ func GetCompBuildDir(stackBasedir string, compName string) (string, error) {
 				break
 			}
 		}
+		if targetDir == "" {
+			return "", fmt.Errorf("unable to figure out the build directory for component %s under %s", compName, compBuildDir)
+		}
 		return filepath.Join(compBuildDir, targetDir), nil
 	}
-	return "", fmt.Errorf("unable to figure out the build directory")
+	return "", fmt.Errorf("unable to figure out the build directory for component %s under %s", compName, compBuildDir)
 }
 
 // GetCompSrcDir returns the source directory for the named component under the stack base directory.
@@ -159,9 +162,12 @@ func GetCompSrcDir(stackBasedir string, compName string) (string, error) {
 				break
 			}
 		}
+		if targetDir == "" {
+			return "", fmt.Errorf("unable to figure out the source directory for component %s under %s", compName, compSrcDir)
+		}
 		return filepath.Join(compSrcDir, targetDir), nil
 	}
-	return "", fmt.Errorf("unable to figure out the source directory")
+	return "", fmt.Errorf("unable to figure out the source directory for component %s under %s", compName, compSrcDir)
 }
 
 // Load reads and parses the stack definition and config files (DefFilePath and ConfigFilePath)
@@ -241,19 +247,34 @@ func (c *Config) UpdateRefs(token string) (string, error) {
 	}
 	softwareComponentName := strToUpdate[:nameDelimiter]
 	ref := strToUpdate[nameDelimiter+1:]
+	replaced := false
 	for compName := range c.InstalledComponents {
 		if compName == softwareComponentName {
-			if ref == "install_dir" {
+			switch ref {
+			case "install_dir":
 				ref = c.InstalledComponents[compName]
-			}
-			if ref == "build_dir" {
-				ref = c.BuiltComponents[compName]
-			}
-			if ref == "src_dir" {
-				ref = c.SrcComponents[compName]
+			case "build_dir":
+				resolvedBuildDir, ok := c.BuiltComponents[compName]
+				if !ok || resolvedBuildDir == "" {
+					return "", fmt.Errorf("unknown build directory for component %s", compName)
+				}
+				ref = resolvedBuildDir
+			case "src_dir":
+				resolvedSrcDir, ok := c.SrcComponents[compName]
+				if !ok || resolvedSrcDir == "" {
+					return "", fmt.Errorf("unknown source directory for component %s", compName)
+				}
+				ref = resolvedSrcDir
+			default:
+				return "", fmt.Errorf("unsupported reference type: %s", ref)
 			}
 			token = token[:startIdx] + ref + token[endIdx+len(RefEndDelimiter):]
+			replaced = true
+			break
 		}
+	}
+	if !replaced {
+		return "", fmt.Errorf("unable to resolve reference for component %s", softwareComponentName)
 	}
 
 	return token, nil
@@ -414,13 +435,12 @@ func (c *Config) InstallStack() error {
 		c.BuiltComponents[softwareComponent.Name] = compBuildDir
 
 		compSrcDir, err := GetCompSrcDir(stackBasedir, softwareComponent.Name)
-		if err != nil {
-			return fmt.Errorf("unable to get source dir from component %s: %w", softwareComponent.Name, err)
+		if err == nil {
+			if c.SrcComponents == nil {
+				c.SrcComponents = make(map[string]string)
+			}
+			c.SrcComponents[softwareComponent.Name] = compSrcDir
 		}
-		if c.SrcComponents == nil {
-			c.SrcComponents = make(map[string]string)
-		}
-		c.SrcComponents[softwareComponent.Name] = compSrcDir
 
 		// If the component has binaries, we update PATH accordingly so we can
 		// benefit from them as we progress installing the stack, i.e., handle
