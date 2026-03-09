@@ -8,6 +8,7 @@ package autotools
 
 import (
 	"fmt"
+	goerrs "github.com/gvallee/go_errs/pkg/goerrs"
 	"io/ioutil"
 	"log"
 	"os/exec"
@@ -74,7 +75,7 @@ func autogen(cfg *Config) error {
 	cmd.Env = cfg.ConfigureEnv
 	res := cmd.Run()
 	if res.Err != nil {
-		return fmt.Errorf("unable to run autogen from %s, command failed: %w - stdout: %s - stderr: %s", cfg.Source, res.Err, res.Stdout, res.Stderr)
+		return goerrs.Wrap("autogen", "command_failed", fmt.Errorf("unable to run autogen from %s, command failed: %w - stdout: %s - stderr: %s", cfg.Source, res.Err, res.Stdout, res.Stderr))
 	}
 
 	return nil
@@ -154,7 +155,7 @@ func (cfg *Config) Configure() error {
 		tokens := strings.Split(cfg.ConfigurePreludeCmd, " ")
 		cmdBin, err := exec.LookPath(tokens[0])
 		if err != nil {
-			return fmt.Errorf("unable to run prelude, cannot find %s", tokens[0])
+			return goerrs.Wrap("Configure", "unavailable", fmt.Errorf("unable to run prelude, cannot find %s", tokens[0]))
 		}
 
 		var preludeCmd advexec.Advcmd
@@ -165,14 +166,14 @@ func (cfg *Config) Configure() error {
 		preludeCmd.ExecDir = cfg.Source
 		res := preludeCmd.Run()
 		if res.Err != nil {
-			return fmt.Errorf("unable to execute configure prelude %s: %w", cfg.ConfigurePreludeCmd, res.Err)
+			return goerrs.Wrap("Configure", "command_failed", fmt.Errorf("unable to execute configure prelude %s: %w", cfg.ConfigurePreludeCmd, res.Err))
 		}
 	}
 
 	// Run autogen when necessary
 	err := autogen(cfg)
 	if err != nil {
-		return err
+		return goerrs.Wrap("Configure", "command_failed", err)
 	}
 
 	if !cfg.HasConfigure {
@@ -206,7 +207,7 @@ func (cfg *Config) Configure() error {
 	}
 	res := cmd.Run()
 	if res.Err != nil {
-		return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", res.Err, res.Stdout, res.Stderr)
+		return goerrs.Wrap("Configure", "command_failed", fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", res.Err, res.Stdout, res.Stderr))
 	}
 
 	return nil

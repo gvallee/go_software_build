@@ -64,8 +64,8 @@ func TestGenerate_customEnvVarPrefix(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	envVars := map[string]string{
-		"PATH":     "/custom/bin",
-		"MYP_FOO":  "foo",
+		"PATH":            "/custom/bin",
+		"MYP_FOO":         "foo",
 		"LD_LIBRARY_PATH": "/custom/lib",
 	}
 

@@ -1,12 +1,18 @@
 // Copyright (c) 2019, Sylabs Inc. All rights reserved.
+// Copyright (c) 2021-2026, NVIDIA CORPORATION. All rights reserved.
 // This software is licensed under a 3-clause BSD license. Please consult the
 // LICENSE.md file distributed with the sources of this project regarding your
 // rights to use or distribute this software.
 
 package app
 
-import "github.com/gvallee/go_software_build/internal/pkg/autotools"
+import (
+	"fmt"
+	goerrs "github.com/gvallee/go_errs/pkg/goerrs"
+	"github.com/gvallee/go_software_build/internal/pkg/autotools"
+)
 
+// SourceCode describes the source details for an application
 type SourceCode struct {
 	// URL is the url to use to download the app
 	URL string
@@ -23,7 +29,7 @@ type Info struct {
 	// Name is the name of the application
 	Name string
 
-	// Information about the source code of the applicatin
+	// Information about the source code of the application
 	Source SourceCode
 
 	// BinName is the name of the binary to start executing the application
@@ -38,7 +44,7 @@ type Info struct {
 	// InstallCmd is the command to execute to install the app (in case it is not a standard command)
 	InstallCmd string
 
-	// Version is the version of the application to concider
+	// Version is the version of the application to consider
 	Version string
 
 	// Tarball is the name of the tarball of the application
@@ -46,4 +52,15 @@ type Info struct {
 
 	// AutotoolsCfg is the autotools' configuration of the package, used to know how to configure, compile and install the software package
 	AutotoolsCfg autotools.Config
+}
+
+// Validate checks if the Info struct is properly initialized
+func (info *Info) Validate() error {
+	if info.Name == "" {
+		return goerrs.Wrap("Info.Validate", "invalid_input", fmt.Errorf("application's name is undefined"))
+	}
+	if info.Source.URL == "" {
+		return goerrs.Wrap("Info.Validate", "invalid_input", fmt.Errorf("the URL to download application is undefined"))
+	}
+	return nil
 }

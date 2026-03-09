@@ -125,8 +125,8 @@ func TestLoad_missingFile(t *testing.T) {
 func TestUpdateRefs(t *testing.T) {
 	c := Config{
 		InstalledComponents: map[string]string{"foo": "/install/foo"},
-		BuiltComponents:      map[string]string{"foo": "/build/foo"},
-		SrcComponents:        map[string]string{"foo": "/src/foo"},
+		BuiltComponents:     map[string]string{"foo": "/build/foo"},
+		SrcComponents:       map[string]string{"foo": "/src/foo"},
 	}
 
 	got, err := c.UpdateRefs("LIB=@ref:foo_install_dir@/lib")
@@ -189,7 +189,7 @@ func TestUpdateRefs_unsupportedRefType(t *testing.T) {
 func TestUpdateRefs_missingBuildDir(t *testing.T) {
 	c := Config{
 		InstalledComponents: map[string]string{"foo": "/install/foo"},
-		BuiltComponents:      map[string]string{},
+		BuiltComponents:     map[string]string{},
 	}
 	_, err := c.UpdateRefs("X=@ref:foo_build_dir@/y")
 	if err == nil {
@@ -200,7 +200,7 @@ func TestUpdateRefs_missingBuildDir(t *testing.T) {
 func TestUpdateRefs_missingSrcDir(t *testing.T) {
 	c := Config{
 		InstalledComponents: map[string]string{"foo": "/install/foo"},
-		SrcComponents:        map[string]string{},
+		SrcComponents:       map[string]string{},
 	}
 	_, err := c.UpdateRefs("X=@ref:foo_src_dir@/y")
 	if err == nil {

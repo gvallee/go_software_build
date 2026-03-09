@@ -10,6 +10,7 @@ package builder
 
 import (
 	"fmt"
+	goerrs "github.com/gvallee/go_errs/pkg/goerrs"
 	"log"
 	"os"
 	"path"
@@ -66,7 +67,7 @@ func GenericConfigure(env *buildenv.Info, appName string, extraArgs []string, co
 	ac.ConfigurePreludeCmd = configurePreludeCmd
 	err := ac.Configure()
 	if err != nil {
-		return fmt.Errorf("failed to configure software: %s", err)
+		return goerrs.Wrap("GenericConfigure", "internal", fmt.Errorf("failed to configure software: %w", err))
 	}
 
 	return nil
@@ -89,7 +90,7 @@ func findMakefile(env *buildenv.Info) (string, []string, error) {
 		}
 	}
 
-	return "", nil, fmt.Errorf("unable to locate the Makefile")
+	return "", nil, goerrs.Wrap("findMakefile", "not_found", fmt.Errorf("unable to locate the Makefile"))
 }
 
 func (b *Builder) compile(pkg *app.Info, env *buildenv.Info) advexec.Result {
@@ -120,7 +121,7 @@ func (b *Builder) compile(pkg *app.Info, env *buildenv.Info) advexec.Result {
 	}
 
 	if env.SrcDir == "" {
-		res.Err = fmt.Errorf("invalid parameter(s)")
+		res.Err = goerrs.Wrap("Builder.compile", "invalid_input", fmt.Errorf("invalid parameter(s)"))
 		return res
 	}
 
@@ -141,7 +142,7 @@ func (b *Builder) install(pkg *app.Info, env *buildenv.Info) advexec.Result {
 	var res advexec.Result
 
 	if env.InstallDir == "" || env.BuildDir == "" {
-		res.Err = fmt.Errorf("invalid parameter(s)")
+		res.Err = goerrs.Wrap("Builder.install", "invalid_input", fmt.Errorf("invalid parameter(s)"))
 		return res
 	}
 
@@ -184,11 +185,11 @@ func (b *Builder) Install() advexec.Result {
 
 	// Sanity checks
 	if b.Env.InstallDir == "" {
-		res.Err = fmt.Errorf("undefined install directory")
+		res.Err = goerrs.Wrap("Builder.Install", "invalid_input", fmt.Errorf("undefined install directory"))
 		return res
 	}
 	if b.App.Source.URL == "" {
-		res.Err = fmt.Errorf("undefined application's URL")
+		res.Err = goerrs.Wrap("Builder.Install", "invalid_input", fmt.Errorf("undefined application's URL"))
 		return res
 	}
 
@@ -279,23 +280,23 @@ func (b *Builder) Load(persistent bool) error {
 	b.Configure = GenericConfigure
 
 	if b.App.Name == "" {
-		return fmt.Errorf("application's name is undefined")
+		return goerrs.Wrap("Builder.Load", "invalid_input", fmt.Errorf("application's name is undefined"))
 	}
 
 	if b.App.Source.URL == "" {
-		return fmt.Errorf("the URL to download application is undefined")
+		return goerrs.Wrap("Builder.Load", "invalid_input", fmt.Errorf("the URL to download application is undefined"))
 	}
 
 	if b.Env.ScratchDir == "" {
-		return fmt.Errorf("scratch directory is undefined")
+		return goerrs.Wrap("Builder.Load", "invalid_input", fmt.Errorf("scratch directory is undefined"))
 	}
 
 	if b.Env.BuildDir == "" {
-		return fmt.Errorf("build directory is undefined")
+		return goerrs.Wrap("Builder.Load", "invalid_input", fmt.Errorf("build directory is undefined"))
 	}
 
 	if b.Env.InstallDir == "" {
-		return fmt.Errorf("install directory is undefined")
+		return goerrs.Wrap("Builder.Load", "invalid_input", fmt.Errorf("install directory is undefined"))
 	}
 
 	return nil
@@ -313,13 +314,13 @@ func (b *Builder) Compile() error {
 	if !util.PathExists(buildEnv.BuildDir) {
 		err := util.DirInit(buildEnv.BuildDir)
 		if err != nil {
-			return fmt.Errorf("failed to initialize directory %s: %s", buildEnv.BuildDir, err)
+			return goerrs.Wrap("Builder.Compile", "internal", fmt.Errorf("failed to initialize directory %s: %w", buildEnv.BuildDir, err))
 		}
 	}
 	if !util.PathExists(buildEnv.InstallDir) {
 		err := util.DirInit(buildEnv.InstallDir)
 		if err != nil {
-			return fmt.Errorf("failed to initialize directory %s: %s", buildEnv.InstallDir, err)
+			return goerrs.Wrap("Builder.Compile", "internal", fmt.Errorf("failed to initialize directory %s: %w", buildEnv.InstallDir, err))
 		}
 	}
 
@@ -329,20 +330,20 @@ func (b *Builder) Compile() error {
 	// Download the app
 	err := buildEnv.Get(&b.App)
 	if err != nil {
-		return fmt.Errorf("unable to get the application from %s: %s", b.App.Source.URL, err)
+		return goerrs.Wrap("Builder.Compile", "internal", fmt.Errorf("unable to get the application from %s: %w", b.App.Source.URL, err))
 	}
 
 	// Unpacking the app
 	err = buildEnv.Unpack(&b.App)
 	if err != nil {
-		return fmt.Errorf("unable to unpack the application %s: %s", buildEnv.SrcPath, err)
+		return goerrs.Wrap("Builder.Compile", "internal", fmt.Errorf("unable to unpack the application %s: %w", buildEnv.SrcPath, err))
 	}
 
 	// Install the app
 	log.Println("-> Building the application...")
 	err = buildEnv.Install(&b.App)
 	if err != nil {
-		return fmt.Errorf("unable to install package: %s", err)
+		return goerrs.Wrap("Builder.Compile", "internal", fmt.Errorf("unable to install package: %w", err))
 	}
 
 	binaryCandidates := []string{
