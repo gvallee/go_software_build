@@ -7,6 +7,7 @@ package module
 
 import (
 	"fmt"
+	goerrs "github.com/gvallee/go_errs/pkg/goerrs"
 	"io/ioutil"
 	"path/filepath"
 	"sort"
@@ -91,7 +92,7 @@ func Generate(path, copyright, customEnvVarPrefix, name string, requires []strin
 
 	err := ioutil.WriteFile(modulefilePath, []byte(content), defaultPermission)
 	if err != nil {
-		return fmt.Errorf("unable to write content of %s: %w", modulefilePath, err)
+		return goerrs.Wrap("Generate", "write_failed", fmt.Errorf("unable to write content of %s: %w", modulefilePath, err))
 	}
 	return nil
 }

@@ -228,7 +228,7 @@ func TestLoad_validation(t *testing.T) {
 		if err == nil {
 			t.Fatal("Load expected to fail with empty App.Name")
 		}
-		if err.Error() != "application's name is undefined" {
+		if !strings.Contains(err.Error(), "application's name is undefined") {
 			t.Errorf("unexpected error: %v", err)
 		}
 	})
@@ -239,7 +239,7 @@ func TestLoad_validation(t *testing.T) {
 		if err == nil {
 			t.Fatal("Load expected to fail with empty URL")
 		}
-		if err.Error() != "the URL to download application is undefined" {
+		if !strings.Contains(err.Error(), "the URL to download application is undefined") {
 			t.Errorf("unexpected error: %v", err)
 		}
 	})
@@ -252,7 +252,7 @@ func TestLoad_validation(t *testing.T) {
 		if err == nil {
 			t.Fatal("Load expected to fail with empty ScratchDir")
 		}
-		if err.Error() != "scratch directory is undefined" {
+		if !strings.Contains(err.Error(), "scratch directory is undefined") {
 			t.Errorf("unexpected error: %v", err)
 		}
 	})
@@ -265,7 +265,7 @@ func TestLoad_validation(t *testing.T) {
 		if err == nil {
 			t.Fatal("Load expected to fail with empty BuildDir")
 		}
-		if err.Error() != "build directory is undefined" {
+		if !strings.Contains(err.Error(), "build directory is undefined") {
 			t.Errorf("unexpected error: %v", err)
 		}
 	})
@@ -278,7 +278,7 @@ func TestLoad_validation(t *testing.T) {
 		if err == nil {
 			t.Fatal("Load expected to fail with empty InstallDir")
 		}
-		if err.Error() != "install directory is undefined" {
+		if !strings.Contains(err.Error(), "install directory is undefined") {
 			t.Errorf("unexpected error: %v", err)
 		}
 	})

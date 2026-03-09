@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	goerrs "github.com/gvallee/go_errs/pkg/goerrs"
 	"github.com/gvallee/go_software_build/internal/pkg/module"
 	"github.com/gvallee/go_software_build/pkg/builder"
 	"github.com/gvallee/go_util/pkg/util"
@@ -177,7 +178,7 @@ func (c *Config) Load() error {
 	// unmarshale the two configuration files
 	defFile, err := os.Open(c.DefFilePath)
 	if err != nil {
-		return fmt.Errorf("unable to open %s: %w", c.DefFilePath, err)
+		return goerrs.Wrap("Config.Load", "invalid_input", fmt.Errorf("unable to open %s: %w", c.DefFilePath, err))
 	}
 	defer defFile.Close()
 	defContent, err := ioutil.ReadAll(defFile)

@@ -12,6 +12,7 @@ package buildenv
 import (
 	"bytes"
 	"fmt"
+	goerrs "github.com/gvallee/go_errs/pkg/goerrs"
 	"io/ioutil"
 	"log"
 	"os"
@@ -67,11 +68,11 @@ func (env *Info) Unpack(appInfo *app.Info) error {
 
 	// Sanity checks
 	if env.SrcPath == "" {
-		return fmt.Errorf("env.SrcPath is undefined")
+		return goerrs.Wrap("Info.Unpack", "invalid_input", fmt.Errorf("env.SrcPath is undefined"))
 	}
 
 	if env.BuildDir == "" {
-		return fmt.Errorf("env.BuildDir is undefined")
+		return goerrs.Wrap("Info.Unpack", "invalid_input", fmt.Errorf("env.BuildDir is undefined"))
 	}
 
 	srcObject := filepath.Join(env.SrcDir, appInfo.Tarball)
@@ -95,12 +96,12 @@ func (env *Info) Unpack(appInfo *app.Info) error {
 	// (and it is a fair assumption for our current context)
 	tarPath, err := exec.LookPath("tar")
 	if err != nil {
-		return fmt.Errorf("tar is not available: %w", err)
+		return goerrs.Wrap("Info.Unpack", "unavailable", fmt.Errorf("tar is not available: %w", err))
 	}
 
 	tarArg := util.GetTarArgs(format)
 	if tarArg == "" {
-		return fmt.Errorf("unsupported format: %s", format)
+		return goerrs.Wrap("Info.Unpack", "unsupported", fmt.Errorf("unsupported format: %s", format))
 	}
 
 	// Untar the package into the build directory
@@ -112,13 +113,13 @@ func (env *Info) Unpack(appInfo *app.Info) error {
 	cmd.Stdout = &stdout
 	err = cmd.Run()
 	if err != nil {
-		return fmt.Errorf("command failed: %w - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
+		return goerrs.Wrap("Info.Unpack", "command_failed", fmt.Errorf("command failed: %w - stdout: %s - stderr: %s", err, stdout.String(), stderr.String()))
 	}
 
 	// We save the directory created while untaring the tarball
 	entries, err := ioutil.ReadDir(env.SrcDir)
 	if err != nil {
-		return fmt.Errorf("failed to read directory %s: %w", env.SrcDir, err)
+		return goerrs.Wrap("Info.Unpack", "command_failed", fmt.Errorf("failed to read directory %s: %w", env.SrcDir, err))
 	}
 	// The source directory now has at most 2 entries: the tarball and the directory resulting from unpacking it
 	if len(entries) > 2 {
@@ -126,7 +127,7 @@ func (env *Info) Unpack(appInfo *app.Info) error {
 		for _, e := range entries {
 			listDirs = e.Name() + ","
 		}
-		return fmt.Errorf("inconsistent temporary %s directory, %d files instead of 1 or 2: %s", env.SrcDir, len(entries), listDirs)
+		return goerrs.Wrap("Info.Unpack", "invalid_state", fmt.Errorf("inconsistent temporary %s directory, %d files instead of 1 or 2: %s", env.SrcDir, len(entries), listDirs))
 	}
 	for _, e := range entries {
 		if e.Name() != filepath.Base(appInfo.Tarball) {
@@ -143,7 +144,7 @@ func (env *Info) Unpack(appInfo *app.Info) error {
 func (env *Info) RunMake(sudo bool, stage string, makefilePath string, args []string) error {
 	// Some sanity checks
 	if env.SrcDir == "" {
-		return fmt.Errorf("env.SrcDir is undefined")
+		return goerrs.Wrap("Info.RunMake", "invalid_input", fmt.Errorf("env.SrcDir is undefined"))
 	}
 
 	var makeCmd advexec.Advcmd
@@ -176,7 +177,7 @@ func (env *Info) RunMake(sudo bool, stage string, makefilePath string, args []st
 	makeCmd.ExecDir = filepath.Dir(makefilePath)
 	res := makeCmd.Run()
 	if res.Err != nil {
-		return fmt.Errorf("command failed: %w - stdout: %s - stderr: %s", res.Err, res.Stdout, res.Stderr)
+		return goerrs.Wrap("Info.RunMake", "command_failed", fmt.Errorf("command failed: %w - stdout: %s - stderr: %s", res.Err, res.Stdout, res.Stderr))
 	}
 
 	return nil
@@ -186,12 +187,12 @@ func (env *Info) RunMake(sudo bool, stage string, makefilePath string, args []st
 func (env *Info) copyTarball(p *app.Info) error {
 	// Some sanity checks
 	if p.Source.URL == "" {
-		return fmt.Errorf("invalid copyTarball() parameter(s)")
+		return goerrs.Wrap("Info.copyTarball", "invalid_input", fmt.Errorf("invalid copyTarball() parameter(s)"))
 	}
 
 	localPath, err := getPathFromFileURL(p.Source.URL)
 	if err != nil {
-		return fmt.Errorf("unable to parse local path from %s: %w", p.Source.URL, err)
+		return goerrs.Wrap("Info.copyTarball", "invalid_input", fmt.Errorf("unable to parse local path from %s: %w", p.Source.URL, err))
 	}
 
 	// Figure out the name of the file if we do not already have it
@@ -203,7 +204,7 @@ func (env *Info) copyTarball(p *app.Info) error {
 	if !util.PathExists(targetDir) {
 		err = os.MkdirAll(targetDir, defaultDirMode)
 		if err != nil {
-			return err
+			return goerrs.Wrap("Info.copyTarball", "internal", err)
 		}
 	}
 	targetTarballPath := filepath.Join(targetDir, p.Tarball)
@@ -213,7 +214,7 @@ func (env *Info) copyTarball(p *app.Info) error {
 	} else {
 		err = util.CopyFile(localPath, targetTarballPath)
 		if err != nil {
-			return fmt.Errorf("cannot copy file %s to %s: %w", p.Source.URL, targetTarballPath, err)
+			return goerrs.Wrap("Info.copyTarball", "internal", fmt.Errorf("cannot copy file %s to %s: %w", p.Source.URL, targetTarballPath, err))
 		}
 	}
 
@@ -227,7 +228,7 @@ func (env *Info) gitCheckout(p *app.Info) error {
 	// todo: should it be cached in sysCfg and passed in?
 	gitBin, err := exec.LookPath("git")
 	if err != nil {
-		return fmt.Errorf("failed to find git: %w", err)
+		return goerrs.Wrap("Info.gitCheckout", "unavailable", fmt.Errorf("failed to find git: %w", err))
 	}
 
 	repoName := filepath.Base(p.Source.URL)
@@ -236,7 +237,7 @@ func (env *Info) gitCheckout(p *app.Info) error {
 	if !util.PathExists(targetDir) {
 		err = os.MkdirAll(targetDir, defaultDirMode)
 		if err != nil {
-			return err
+			return goerrs.Wrap("Info.gitCheckout", "internal", err)
 		}
 	}
 	checkoutPath := filepath.Join(targetDir, repoName)
@@ -250,7 +251,7 @@ func (env *Info) gitCheckout(p *app.Info) error {
 		gitCmd.Stdout = &stdout
 		err = gitCmd.Run()
 		if err != nil {
-			return fmt.Errorf("command failed: %w - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
+			return goerrs.Wrap("Info.gitCheckout", "command_failed", fmt.Errorf("command failed: %w - stdout: %s - stderr: %s", err, stdout.String(), stderr.String()))
 		}
 	} else {
 		gitCloneCmd := exec.Command(gitBin, "clone", p.Source.URL)
@@ -261,7 +262,7 @@ func (env *Info) gitCheckout(p *app.Info) error {
 		gitCloneCmd.Stdout = &stdout
 		err = gitCloneCmd.Run()
 		if err != nil {
-			return fmt.Errorf("command failed: %w - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
+			return goerrs.Wrap("Info.gitCheckout", "command_failed", fmt.Errorf("command failed: %w - stdout: %s - stderr: %s", err, stdout.String(), stderr.String()))
 		}
 
 		if p.Source.BranchCheckoutPrelude != "" {
@@ -278,7 +279,7 @@ func (env *Info) gitCheckout(p *app.Info) error {
 			gitCheckoutPreludeCmd.Stdout = &stdout
 			err = gitCheckoutPreludeCmd.Run()
 			if err != nil {
-				return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
+				return goerrs.Wrap("Info.gitCheckout", "command_failed", fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String()))
 			}
 		}
 
@@ -290,7 +291,7 @@ func (env *Info) gitCheckout(p *app.Info) error {
 			gitCheckoutCmd.Stdout = &stdout
 			err = gitCheckoutCmd.Run()
 			if err != nil {
-				return fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
+				return goerrs.Wrap("Info.gitCheckout", "command_failed", fmt.Errorf("command failed: %s - stdout: %s - stderr: %s", err, stdout.String(), stderr.String()))
 			}
 		}
 	}
@@ -310,30 +311,30 @@ func (env *Info) Get(p *app.Info) error {
 
 	// Sanity checks
 	if p.Source.URL == "" {
-		return fmt.Errorf("invalid Get() parameter(s)")
+		return goerrs.Wrap("Info.Get", "invalid_input", fmt.Errorf("invalid Get() parameter(s)"))
 	}
 
 	// Detect the type of URL, e.g., file vs. http*
 	urlFormat := util.DetectURLType(p.Source.URL)
 	if urlFormat == "" {
-		return fmt.Errorf("impossible to detect type from URL %s", p.Source.URL)
+		return goerrs.Wrap("Info.Get", "unsupported", fmt.Errorf("impossible to detect type from URL %s", p.Source.URL))
 	}
 
 	switch urlFormat {
 	case util.FileURL:
 		if env.BuildDir == "" {
-			return fmt.Errorf("env.BuildDir is undefined")
+			return goerrs.Wrap("Info.Get", "invalid_input", fmt.Errorf("env.BuildDir is undefined"))
 		}
 
 		localPath, err := getPathFromFileURL(p.Source.URL)
 		if err != nil {
-			return fmt.Errorf("unable to parse local path from %s: %w", p.Source.URL, err)
+			return goerrs.Wrap("Info.Get", "invalid_input", fmt.Errorf("unable to parse local path from %s: %w", p.Source.URL, err))
 		}
 
 		if !util.IsDir(localPath) {
 			err := env.copyTarball(p)
 			if err != nil {
-				return fmt.Errorf("env.copyTarball() failed: %w", err)
+				return goerrs.Wrap("Info.Get", "command_failed", fmt.Errorf("env.copyTarball() failed: %w", err))
 			}
 		} else {
 			// If we deal with a directory, we always copy it directly to the build directory because
@@ -356,7 +357,7 @@ func (env *Info) Get(p *app.Info) error {
 			cmd.CmdArgs = append(cmd.CmdArgs, targetDir)
 			res := cmd.Run()
 			if res.Err != nil {
-				return fmt.Errorf("unable to copy %s into %s: %w, stdout: %s, stderr: %s", localPath, targetDir, res.Err, res.Stdout, res.Stderr)
+				return goerrs.Wrap("Info.Get", "command_failed", fmt.Errorf("unable to copy %s into %s: %w, stdout: %s, stderr: %s", localPath, targetDir, res.Err, res.Stdout, res.Stderr))
 			}
 
 			env.SrcPath = filepath.Join(targetDir, filepath.Base(localPath))
@@ -365,7 +366,7 @@ func (env *Info) Get(p *app.Info) error {
 	case util.HttpURL:
 		err := env.download(p)
 		if err != nil {
-			return fmt.Errorf("env.download() failed, impossible to download %s: %w", p.Name, err)
+			return goerrs.Wrap("Info.Get", "command_failed", fmt.Errorf("env.download() failed, impossible to download %s: %w", p.Name, err))
 		}
 	case util.GitURL:
 		// If we deal with a Git repository, we always clone it in the build directory because
@@ -373,7 +374,7 @@ func (env *Info) Get(p *app.Info) error {
 		env.SrcPath = env.BuildDir
 		err := env.gitCheckout(p)
 		if err != nil {
-			return fmt.Errorf("impossible to get Git repository %s: %s", p.Source.URL, err)
+			return goerrs.Wrap("Info.Get", "command_failed", fmt.Errorf("impossible to get Git repository %s: %w", p.Source.URL, err))
 		}
 	default:
 		return fmt.Errorf("impossible to detect URL type: %s", p.Source.URL)
@@ -385,17 +386,17 @@ func (env *Info) Get(p *app.Info) error {
 func (env *Info) download(p *app.Info) error {
 	// Sanity checks
 	if p.Source.URL == "" {
-		return fmt.Errorf("p.URL is undefined")
+		return goerrs.Wrap("Info.download", "invalid_input", fmt.Errorf("p.URL is undefined"))
 	}
 
 	if env.SrcDir == "" {
-		return fmt.Errorf("env.SrcDir is undefined")
+		return goerrs.Wrap("Info.download", "invalid_input", fmt.Errorf("env.SrcDir is undefined"))
 	}
 
 	if !util.PathExists(env.SrcDir) {
 		err := os.MkdirAll(env.SrcDir, defaultDirMode)
 		if err != nil {
-			return err
+			return goerrs.Wrap("Info.download", "internal", err)
 		}
 	}
 	if p.Tarball == "" {
@@ -410,7 +411,7 @@ func (env *Info) download(p *app.Info) error {
 		// todo: do not assume wget
 		binPath, err := exec.LookPath("wget")
 		if err != nil {
-			return fmt.Errorf("cannot find wget: %s", err)
+			return goerrs.Wrap("Info.download", "unavailable", fmt.Errorf("cannot find wget: %w", err))
 		}
 
 		log.Printf("* Executing from %s: %s %s", env.SrcDir, binPath, p.Source.URL)
@@ -421,7 +422,7 @@ func (env *Info) download(p *app.Info) error {
 		cmd.Stdout = &stdout
 		err = cmd.Run()
 		if err != nil {
-			return fmt.Errorf("command failed: %w - stdout: %s - stderr: %s", err, stdout.String(), stderr.String())
+			return goerrs.Wrap("Info.download", "command_failed", fmt.Errorf("command failed: %w - stdout: %s - stderr: %s", err, stdout.String(), stderr.String()))
 		}
 	}
 	env.SrcPath = targetFile
@@ -432,12 +433,12 @@ func (env *Info) download(p *app.Info) error {
 func getPathFromFileURL(url string) (string, error) {
 	const filePrefix = "file://"
 	if !strings.HasPrefix(url, filePrefix) {
-		return "", fmt.Errorf("unsupported file URL: %s", url)
+		return "", goerrs.Wrap("getPathFromFileURL", "unsupported", fmt.Errorf("unsupported file URL: %s", url))
 	}
 
 	localPath := strings.TrimPrefix(url, filePrefix)
 	if localPath == "" {
-		return "", fmt.Errorf("empty local path in file URL: %s", url)
+		return "", goerrs.Wrap("getPathFromFileURL", "invalid_input", fmt.Errorf("empty local path in file URL: %s", url))
 	}
 
 	return localPath, nil
@@ -559,7 +560,7 @@ func (env *Info) Install(p *app.Info) error {
 	log.Printf("Environment: %s\n", strings.Join(env.Env, "\n"))
 	res := cmd.Run()
 	if res.Err != nil {
-		return fmt.Errorf("failed to install %s: %s; stdout: %s; stderr: %s", p.Name, res.Err, res.Stdout, res.Stderr)
+		return goerrs.Wrap("Info.Install", "command_failed", fmt.Errorf("failed to install %s: %w; stdout: %s; stderr: %s", p.Name, res.Err, res.Stdout, res.Stderr))
 	}
 
 	return nil
@@ -570,19 +571,19 @@ func (env *Info) Init() error {
 	if !util.PathExists(env.ScratchDir) {
 		err := os.MkdirAll(env.ScratchDir, 0755)
 		if err != nil {
-			return fmt.Errorf("failed to create scratch directory %s: %w", env.ScratchDir, err)
+			return goerrs.Wrap("Info.Init", "internal", fmt.Errorf("failed to create scratch directory %s: %w", env.ScratchDir, err))
 		}
 	}
 	if !util.PathExists(env.BuildDir) {
 		err := os.MkdirAll(env.BuildDir, 0755)
 		if err != nil {
-			return fmt.Errorf("failed to create build directory %s: %w", env.BuildDir, err)
+			return goerrs.Wrap("Info.Init", "internal", fmt.Errorf("failed to create build directory %s: %w", env.BuildDir, err))
 		}
 	}
 	if !util.PathExists(env.InstallDir) {
 		err := os.MkdirAll(env.InstallDir, 0755)
 		if err != nil {
-			return fmt.Errorf("failed to create build directory %s: %w", env.InstallDir, err)
+			return goerrs.Wrap("Info.Init", "internal", fmt.Errorf("failed to create build directory %s: %w", env.InstallDir, err))
 		}
 	}
 	return nil

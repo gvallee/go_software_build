@@ -1,3 +1,5 @@
+github.com/gvallee/go_errs v1.0.0 h1:lFzhcsqoJEses1xznP1FP6/8Fg3TF5xxgtFKCh3Mmkk=
+github.com/gvallee/go_errs v1.0.0/go.mod h1:gBhdm7qF91VCENd/iVCn5HZEwOFKkWlhhh4GnVsHBYQ=
 github.com/gvallee/go_exec/v2 v2.0.2 h1:2S4JWmC7ZZTTJuUSFe8rClMaX7b+3RqWJe+GoTczXA0=
 github.com/gvallee/go_exec/v2 v2.0.2/go.mod h1:oqQQK0MyyRdbDj44/BGuCJhfBrGtyuMWHDH8ozy0WOI=
 github.com/gvallee/go_util v1.7.0 h1:jrJ7EfmgUm/O4Zk83qy2anrfa24gfEx0z5wqEK+wDOY=
