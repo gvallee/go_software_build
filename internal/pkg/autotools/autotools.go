@@ -14,7 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/gvallee/go_exec/pkg/advexec"
+	"github.com/gvallee/go_exec/v2/pkg/advexec"
 	"github.com/gvallee/go_util/pkg/util"
 )
 
